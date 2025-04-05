@@ -30,8 +30,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("Error getting session:", error);
           setUser(null);
         } else {
-          console.log("Session found:", session?.user?.email);
-          setUser(session?.user ?? null);
+          const currentUser = session?.user ?? null;
+          setUser(currentUser);
+
+          if (currentUser) {
+            const { data: student, error: studentError } = await supabase
+                .from("students")
+                .select("*")
+                .eq("user_id", currentUser.id)
+                .single();
+
+            if (!student || studentError) {
+              console.log("Redirecting to profile setup...");
+              router.push("/profile-setup");
+            }
+          }
         }
       } catch (error) {
         console.error("Unexpected error getting session:", error);

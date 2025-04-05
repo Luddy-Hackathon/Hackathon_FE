@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, MessageSquare, User, Settings, LogOut } from "lucide-react";
+import { BookOpen, GraduationCap, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,11 @@ const sidebarItems = [
     name: "Course Recommendations",
     icon: BookOpen,
     href: "/",
+  },
+  {
+    name: "Course Catalog",
+    icon: GraduationCap,
+    href: "/courses",
   },
   {
     name: "Chat Assistant",

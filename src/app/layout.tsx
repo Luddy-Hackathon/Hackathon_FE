@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
-import ClientChatAssistant from "@/components/chat/ClientChatAssistant";
 import { cn } from "@/lib/utils";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import AuthenticatedLayout from "@/components/layout/AuthenticatedLayout";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,15 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={cn("antialiased", inter.variable)}>
-        <div className="flex h-screen bg-white">
-          <Sidebar />
-          <div className="flex flex-1 ml-64">
-            <main className="flex-1 overflow-y-auto">{children}</main>
-            <div className="w-80 hidden md:block">
-              <ClientChatAssistant />
-            </div>
-          </div>
-        </div>
+        <AuthProvider>
+          <AuthenticatedLayout>{children}</AuthenticatedLayout>
+        </AuthProvider>
       </body>
     </html>
   );

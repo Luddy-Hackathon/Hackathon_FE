@@ -1,9 +1,10 @@
 "use client";
 
-import { BookOpen, MessageSquare, User, Settings } from "lucide-react";
+import { BookOpen, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 const sidebarItems = [
   {
@@ -30,6 +31,7 @@ const sidebarItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { signOut } = useAuth();
 
   return (
     <div className="w-64 border-r border-zinc-200 bg-white h-screen fixed left-0 top-0 flex flex-col">
@@ -55,8 +57,17 @@ export default function Sidebar() {
           </Link>
         ))}
       </div>
-      <div className="p-4 border-t border-zinc-200 text-xs text-zinc-500">
-        © 2025 Smart Course Selector
+      <div className="p-4 border-t border-zinc-200">
+        <button
+          onClick={() => signOut()}
+          className="flex items-center gap-3 px-4 py-3 text-zinc-600 hover:bg-zinc-100 transition-colors w-full"
+        >
+          <LogOut size={20} />
+          <span>Log Out</span>
+        </button>
+        <div className="text-xs text-zinc-500 mt-2">
+          © 2025 Smart Course Selector
+        </div>
       </div>
     </div>
   );

@@ -12,11 +12,11 @@ const sidebarItems = [
     icon: BookOpen,
     href: "/",
   },
-  {
-    name: "Chat Assistant",
-    icon: MessageSquare,
-    href: "/chat",
-  },
+  // {
+  //   name: "Chat Assistant",
+  //   icon: MessageSquare,
+  //   href: "/chat",
+  // },
   {
     name: "Profile",
     icon: User,

@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { AcademicCapIcon, BookOpenIcon, ClockIcon, ChartBarIcon, UserIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import { AcademicCapIcon, BookOpenIcon, ClockIcon, ChartBarIcon, UserIcon, ChatBubbleLeftRightIcon, InformationCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useRecommendations } from "@/context/RecommendationsContext";
+import { getCourseAvailabilityData } from "@/lib/courseAvailability";
 
 // API Config
 const API_CONFIG = {
@@ -26,6 +27,7 @@ type Course = {
   career_paths?: string[];
   technical_level?: string;
   description?: string;
+  hours_required?: number;
 };
 
 type Student = {
@@ -51,6 +53,8 @@ type CourseRecommendation = {
   time_slot: string;
   reasons: string[];
   prerequisites?: string[];
+  hours_required?: number;
+  availability_score?: number;
 };
 
 // Utility to check for time slot conflicts
@@ -178,6 +182,24 @@ function formatTimeSlot(timeSlot: any): string {
   }
 }
 
+// Utility to determine difficulty level based on hours_required
+function getDifficultyLevel(hoursRequired: number | null | undefined): string {
+  if (hoursRequired === null || hoursRequired === undefined) {
+    return 'Intermediate'; // Default difficulty level
+  }
+  
+  // Define hour ranges for each difficulty level
+  if (hoursRequired < 4) {
+    return 'Beginner';
+  } else if (hoursRequired >= 4 && hoursRequired < 8) {
+    return 'Intermediate';
+  } else if (hoursRequired >= 8 && hoursRequired < 12) {
+    return 'Advanced';
+  } else {
+    return 'Expert';
+  }
+}
+
 // Get course recommendations from LLM
 async function getRecommendationsFromLLM(student: Student, courses: Course[]): Promise<CourseRecommendation[]> {
   if (!API_CONFIG.key) {
@@ -188,50 +210,81 @@ async function getRecommendationsFromLLM(student: Student, courses: Course[]): P
   try {
     console.log('Generating course recommendations...');
     
+    // Get course IDs for availability calculation
+    const courseIds = courses.map(course => course.id);
+    
+    // Get historical availability data
+    const availabilityScores = await getCourseAvailabilityData(courseIds);
+    console.log('Retrieved availability data for', Object.keys(availabilityScores).length, 'courses');
+    
     // Create a concise student profile
-    const studentProfile = {
-      career_goal: student.career_goal_id,
+      const studentProfile = {
+        career_goal: student.career_goal_id,
       technical_level: student.technical_proficiency,
       preferred_subjects: student.preferred_subjects,
       time_slot_preference: student.course_slot_preference,
-      current_courses: student.current_courses_taken,
+        current_courses: student.current_courses_taken,
       credits_completed: student.credits_completed
     };
     
     // Select appropriate courses for recommendation
-    const coursesData = courses.map(course => ({
-      id: course.id,
-      title: course.title,
-      subject: course.subject,
-      credits: course.credits,
-      difficulty_level: course.difficulty_level,
-      time_slots: course.time_slots,
-      prerequisites: course.prerequisites,
-      career_paths: course.career_paths,
-      technical_level: course.technical_level,
-      description: course.description || `Course on ${course.subject}`
-    }));
+    const coursesData = courses.map(course => {
+      // Determine difficulty level based on hours_required if available
+      const calculatedDifficultyLevel = course.hours_required 
+        ? getDifficultyLevel(course.hours_required)
+        : course.difficulty_level || 'Intermediate';
+      
+      // Get availability score (default to 0.7 if no data)
+      const availabilityScore = availabilityScores[course.id] || 0.7;
+      
+      return {
+        id: course.id,
+        title: course.title,
+        subject: course.subject,
+        credits: course.credits,
+        difficulty_level: calculatedDifficultyLevel,
+        time_slots: course.time_slots,
+        prerequisites: course.prerequisites,
+        career_paths: course.career_paths,
+        technical_level: course.technical_level,
+        hours_required: course.hours_required,
+        description: course.description || `Course on ${course.subject}`,
+        availability_score: availabilityScore
+      };
+    });
     
     // Create an optimized prompt
-    const prompt = `You are a course recommendation expert with deep technical knowledge. Recommend exactly 3 courses for a student with NO TIME CONFLICTS between them.
-
+    const prompt = `You are a course recommendation expert with deep technical knowledge. Recommend exactly 3 courses for a student with ABSOLUTELY NO TIME CONFLICTS between them.
+      
 Student Profile:
 ${JSON.stringify(studentProfile, null, 2)}
 
 Available Courses:
 ${JSON.stringify(coursesData, null, 2)}
 
-Important requirements:
-1. The 3 courses MUST NOT have time conflicts with each other
-2. Prioritize courses that align with the student's career goal
-3. Consider the student's technical level and preferred subjects
-4. Check for prerequisites (student should have taken them already)
+CRITICAL REQUIREMENTS:
+1. THE 3 COURSES MUST HAVE ABSOLUTELY NO TIME CONFLICTS WITH EACH OTHER. This is your top priority.
+   - Carefully check each course's time_slots property before recommending
+   - Verify day and time combinations don't overlap
+   - If time_slots is a string like "MWF 10:00-11:15", check that other recommended courses don't have classes on the same days at overlapping times
+   - If time_slots is a JSON object with "days" and "time" properties, check each day letter (M=Monday, T=Tuesday, etc.) and time range for conflicts
+
+2. Prioritize courses that align with the student's career goal and could be REQUIRED for their career path
+3. Consider course AVAILABILITY when making recommendations:
+   - Higher availability_score (closer to 1.0) means easier to enroll
+   - Lower availability_score (closer to 0.0) means the course tends to fill up quickly
+   - Look for courses with DIVERSE occupancy rates, but PRIORITIZE LOW OCCUPANCY COURSES (high availability_score)
+   - Try to include at least one course with availability_score above 0.7 (which means under 30% occupancy)
+4. Consider the student's technical level and preferred subjects
+5. Check for prerequisites (student should have taken them already)
+6. Ensure the difficulty level is appropriate based on the hours_required value
 
 For each recommended course, provide HIGHLY SPECIFIC technical reasons:
-- List exactly what TECHNICAL SKILLS the student will learn (programming languages, frameworks, tools, concepts) not more than 4 words
-- Explain how these skills will help in their SPECIFIC CAREER PATH
-- Describe specific PROJECTS or APPLICATIONS they could build with these skills
-- Mention how this builds on their current knowledge or technical level
+- List exactly what TECHNICAL SKILLS the student will learn (programming languages, frameworks, tools, concepts) not more than 3 words
+- Explain how these skills will help in their SPECIFIC CAREER PATH not more than 3 words
+- Describe specific PROJECTS or APPLICATIONS they could build with these skills not more than 3 words
+- Mention how this builds on their current knowledge or technical level not more than 3 words
+- If the course has high occupancy (availability_score below 0.3, meaning >70% full), mention that the student should register early
 
 Respond ONLY with a JSON object in this exact format:
 {
@@ -284,29 +337,109 @@ Respond ONLY with a JSON object in this exact format:
         const course = courses.find(c => c.id === rec.course_id);
           if (!course) return null;
 
+          // Calculate difficulty level based on hours_required if available
+          const difficultyLevel = course.hours_required 
+            ? getDifficultyLevel(course.hours_required) 
+            : course.difficulty_level || 'Intermediate';
+            
+          // Get availability score
+          const availabilityScore = availabilityScores[course.id] || 0.7;
+
           return {
             course_id: course.id,
             title: course.title,
-          subject: course.subject || 'General',
+            subject: course.subject || 'General',
             credits: course.credits,
-          match_score: rec.match_score || 0.7,
-          difficulty_level: course.difficulty_level || 'Intermediate',
-          time_slot: typeof course.time_slots === 'object' ? 
-            JSON.stringify(course.time_slots) : course.time_slots,
-          reasons: rec.reasons || ['Recommended based on your profile'],
-          prerequisites: course.prerequisites || []
+            match_score: rec.match_score || 0.7,
+            difficulty_level: difficultyLevel,
+            time_slot: typeof course.time_slots === 'object' ? 
+              JSON.stringify(course.time_slots) : course.time_slots,
+            reasons: rec.reasons || ['Recommended based on your profile'],
+            prerequisites: course.prerequisites || [],
+            hours_required: course.hours_required,
+            availability_score: availabilityScore
           };
         })
         .filter(Boolean);
     } catch (error) {
     console.error('Error getting LLM recommendations:', error);
     
-    // Return basic recommendations as fallback
-    return courses
-      .slice(0, 3)
+    // Return basic recommendations as fallback - but ensure no time conflicts
+    // and respect the hours_required field for difficulty level
+    const nonConflictingCourses: Course[] = [];
+    
+    // Try to get course availability data
+    let availabilityData: Record<number, number> = {};
+    try {
+      availabilityData = await getCourseAvailabilityData(courses.map(course => course.id));
+    } catch (err) {
+      console.error('Failed to get availability data for fallback recommendations:', err);
+    }
+    
+    // Sort courses by relevance to career goal and availability
+    const sortedCourses = [...courses].sort((a, b) => {
+      // First priority: Required courses for career path
+      const aIsRequired = a.career_paths && a.career_paths.includes(student.career_goal_id);
+      const bIsRequired = b.career_paths && b.career_paths.includes(student.career_goal_id);
+      
+      if (aIsRequired && !bIsRequired) return -1;
+      if (!aIsRequired && bIsRequired) return 1;
+      
+      // Second priority: Matched subjects to student preferences
+      const aMatchesSubject = student.preferred_subjects?.includes(a.subject || '');
+      const bMatchesSubject = student.preferred_subjects?.includes(b.subject || '');
+      
+      if (aMatchesSubject && !bMatchesSubject) return -1;
+      if (!aMatchesSubject && bMatchesSubject) return 1;
+      
+      // Third priority: Availability score (higher is better)
+      const aAvailability = availabilityData[a.id] || 0.5;
+      const bAvailability = availabilityData[b.id] || 0.5;
+      
+      return bAvailability - aAvailability;
+    });
+    
+    // Get up to 3 courses with no time conflicts
+    for (const course of sortedCourses) {
+      // Skip if we already have 3 courses
+      if (nonConflictingCourses.length >= 3) break;
+      
+      // Check if this course conflicts with any already selected courses
+      const hasConflict = nonConflictingCourses.some(selectedCourse => 
+        hasTimeConflict(
+          typeof course.time_slots === 'object' ? JSON.stringify(course.time_slots) : course.time_slots,
+          typeof selectedCourse.time_slots === 'object' ? JSON.stringify(selectedCourse.time_slots) : selectedCourse.time_slots
+        )
+      );
+      
+      // If no conflict, add to our selection
+      if (!hasConflict) {
+        nonConflictingCourses.push(course);
+      }
+    }
+    
+    // If we couldn't find 3 non-conflicting courses, just take the top ones until we have 3
+    if (nonConflictingCourses.length < 3) {
+      for (const course of sortedCourses) {
+        if (nonConflictingCourses.length >= 3) break;
+        if (!nonConflictingCourses.includes(course)) {
+          nonConflictingCourses.push(course);
+        }
+      }
+    }
+    
+    return nonConflictingCourses
       .map(course => {
         // Generate course-specific technical reasons based on available course data
         const reasons: string[] = [];
+        
+        // Calculate difficulty level based on hours_required if available
+        const difficultyLevel = course.hours_required 
+          ? getDifficultyLevel(course.hours_required) 
+          : course.difficulty_level || 'Intermediate';
+        
+        // Get availability score from our calculated data
+        const availabilityScore = availabilityData[course.id] || 0.7;
         
         // Map subjects to specific technical skills
         const subjectToSkills: Record<string, string[]> = {
@@ -353,17 +486,28 @@ Respond ONLY with a JSON object in this exact format:
           reasons.push(`Develop versatile technical abilities valued across multiple tech industries`);
         }
         
+        // Add difficulty-level specific reason based on hours_required
+        const hourBasedReason = `This ${difficultyLevel.toLowerCase()}-level course requires about ${course.hours_required || 'variable'} hours weekly`;
+        reasons.push(hourBasedReason);
+        
+        // Add availability-based reason if availability is low
+        if (availabilityScore < 0.5) {
+          reasons.push(`This course tends to fill up quickly - register early to secure your spot`);
+        }
+        
         return {
           course_id: course.id,
           title: course.title,
           subject: course.subject || 'General',
           credits: course.credits,
           match_score: 0.7,
-          difficulty_level: course.difficulty_level || 'Intermediate',
+          difficulty_level: difficultyLevel,
           time_slot: typeof course.time_slots === 'object' ? 
             JSON.stringify(course.time_slots) : course.time_slots,
           reasons,
-          prerequisites: course.prerequisites || []
+          prerequisites: course.prerequisites || [],
+          hours_required: course.hours_required,
+          availability_score: availabilityScore
         };
       });
   }
@@ -380,6 +524,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [viewingHistoryFor, setViewingHistoryFor] = useState<number | null>(null);
 
   // Generate course recommendations
   const generateRecommendations = useCallback(async (studentData: Student, coursesData: Course[]) => {
@@ -390,14 +535,37 @@ export default function Dashboard() {
       
       if (newRecommendations.length > 0) {
         // Verify no time conflicts
-        const hasConflicts = newRecommendations.some((course1, i) => 
-          newRecommendations.some((course2, j) => 
-            i !== j && hasTimeConflict(course1.time_slot, course2.time_slot)
-          )
-        );
+        let hasConflicts = false;
+        const conflictPairs: [string, string][] = [];
+        
+        // Check each pair of courses for conflicts
+        for (let i = 0; i < newRecommendations.length; i++) {
+          for (let j = i + 1; j < newRecommendations.length; j++) {
+            const course1 = newRecommendations[i];
+            const course2 = newRecommendations[j];
+            
+            if (hasTimeConflict(course1.time_slot, course2.time_slot)) {
+              hasConflicts = true;
+              conflictPairs.push([course1.title, course2.title]);
+              console.error(`Time conflict detected between "${course1.title}" and "${course2.title}"`);
+            }
+          }
+        }
         
         if (hasConflicts) {
-          console.warn('Time conflicts detected in recommendations');
+          console.warn('Time conflicts detected in recommendations from LLM:');
+          conflictPairs.forEach(([course1, course2]) => {
+            console.warn(`  - Conflict between "${course1}" and "${course2}"`);
+          });
+          
+          setError(`Error: The AI generated courses with time conflicts. Please try again or select different courses. ${conflictPairs.length} conflicts found.`);
+          
+          // Despite conflicts, we'll still use these recommendations but with a warning
+          // This ensures the user gets some recommendations even if imperfect
+          console.log('Using recommendations despite conflicts. User has been warned.');
+        } else {
+          console.log('No time conflicts detected in recommendations. All good!');
+          setError(null);
         }
         
         console.log('Generated new recommendations via LLM');
@@ -408,6 +576,7 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error('Error generating recommendations:', error);
+      setError('Failed to generate recommendations. Please try again.');
     } finally {
       setLoadingRecommendations(false);
     }
@@ -507,6 +676,11 @@ export default function Dashboard() {
     }
   }, [updateRecommendations, applyUpdateRecommendations]);
 
+  // Close the enrollment history modal
+  const closeEnrollmentHistory = () => {
+    setViewingHistoryFor(null);
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -554,14 +728,15 @@ export default function Dashboard() {
                 Last refreshed: {lastUpdated.toLocaleString()}
               </p>
             )}
-          </div>
+        </div>
           <div className="flex space-x-4">
             <button
               onClick={handleRefreshRecommendations}
               disabled={loadingRecommendations}
               className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              {loadingRecommendations ? 'Generating...' : 'Get New Recommendations'}
+              <ArrowPathIcon className={`w-4 h-4 mr-2 ${loadingRecommendations ? 'animate-spin' : ''}`} />
+              {loadingRecommendations ? 'Generating...' : 'Refresh'}
             </button>
           </div>
         </div>
@@ -592,13 +767,41 @@ export default function Dashboard() {
               key={course.course_id}
               className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-all duration-300"
             >
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{course.title}</h3>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                      {Math.round(course.match_score * 100)}% match
-                    </span>
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">{course.title}</h3>
+                    </div>
+                    <div className="flex-shrink-0 relative">
+                      <svg className="w-10 h-10" viewBox="0 0 36 36">
+                        {/* Gray background ring */}
+                        <circle 
+                          cx="18" 
+                          cy="18" 
+                          r="16" 
+                          fill="none" 
+                          stroke="#f1f5f9" 
+                          strokeWidth="3"
+                        />
+                        {/* Colored progress ring */}
+                        <circle 
+                          cx="18" 
+                          cy="18" 
+                          r="16" 
+                          fill="none" 
+                          stroke={course.match_score >= 0.85 ? "#4ade80" : course.match_score >= 0.7 ? "#60a5fa" : "#f97316"} 
+                          strokeWidth="3"
+                          strokeDasharray={`${Math.round(course.match_score * 100)} 100`}
+                          strokeDashoffset="25"
+                          strokeLinecap="round"
+                          transform="rotate(-90 18 18)"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold">{Math.round(course.match_score * 100)}%</span>
+                      </div>
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-4 text-sm text-gray-600">
@@ -612,12 +815,53 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center">
                       <ChartBarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                        <span>{course.difficulty_level || 'Intermediate'}</span>
+                      <span>
+                        {course.difficulty_level || 'Intermediate'}
+                        {course.hours_required && ` (${course.hours_required} hrs/week)`}
+                      </span>
                     </div>
                     <div className="flex items-center">
                       <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
                       <span>{formatTimeSlot(course.time_slot)}</span>
                     </div>
+                    {course.availability_score !== undefined && (
+                      <div className="flex items-center gap-2 mt-3">
+                        <div className="flex-shrink-0">
+                          <div className={`inline-block w-3 h-3 rounded-full ${
+                            (1 - course.availability_score) * 100 <= 50 ? 'bg-green-500' : 
+                            (1 - course.availability_score) * 100 <= 70 ? 'bg-yellow-500' : 
+                            'bg-red-500'
+                          }`}></div>
+                        </div>
+                        <span className={`text-xs ${
+                          (1 - course.availability_score) * 100 <= 50 ? 'text-green-600' : 
+                          (1 - course.availability_score) * 100 <= 70 ? 'text-yellow-600' : 
+                          'text-red-600'
+                        }`}>
+                          {(1 - course.availability_score) * 100 <= 50 ? 'Low occupancy' : 
+                          (1 - course.availability_score) * 100 <= 70 ? 'Medium occupancy' : 
+                          'High occupancy'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          ({Math.round((1 - course.availability_score) * 100)}% predicted occupancy)
+                        </span>
+                        <button 
+                          className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setViewingHistoryFor(course.course_id);
+                          }}
+                        >
+                          Details
+                        </button>
+                        <div className="relative ml-1 group">
+                          <InformationCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
+                          <div className="absolute bottom-full right-0 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none w-60">
+                            Prediction based on historical enrollment patterns. Lower availability means the course typically fills up quickly.
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -653,6 +897,104 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Enrollment History Modal */}
+      {viewingHistoryFor !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {(() => {
+                const course = recommendations.find(c => c.course_id === viewingHistoryFor);
+                if (!course) return null;
+                
+                const availabilityScore = course.availability_score || 0.5;
+                const predictedOccupancy = Math.round((1 - availabilityScore) * 100);
+                
+                return (
+                  <>
+                    <div className="flex justify-between items-start mb-4">
+                      <h2 className="text-xl font-semibold text-gray-900">Enrollment Prediction: {course.title}</h2>
+                      <button 
+                        onClick={closeEnrollmentHistory}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+          </div>
+                    
+                    <div className="mb-6">
+                      <div className="mb-2 flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Predicted occupancy:</span>
+                        <span className={`font-medium ${
+                          predictedOccupancy <= 50 ? 'text-green-600' : 
+                          predictedOccupancy <= 70 ? 'text-yellow-600' : 
+                          'text-red-600'
+                        }`}>{predictedOccupancy}%</span>
+          </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className={`h-2.5 rounded-full ${
+                            predictedOccupancy <= 50 ? 'bg-green-500' : 
+                            predictedOccupancy <= 70 ? 'bg-yellow-500' : 
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${predictedOccupancy}%` }}
+                        ></div>
+                      </div>
+                      <p className="mt-2 text-sm italic text-gray-600">
+                        {predictedOccupancy <= 50 
+                          ? 'This course typically has plenty of open slots.' 
+                          : predictedOccupancy <= 70 
+                            ? 'This course sometimes fills up, but usually not immediately.' 
+                            : 'This course tends to fill up quickly after registration opens.'}
+                      </p>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <h3 className="font-medium mb-2 text-gray-900">What this means:</h3>
+                      <ul className="list-disc pl-5 space-y-2 text-gray-700">
+                        <li>{predictedOccupancy <= 50 
+                              ? 'You should have no trouble getting into this course.' 
+                              : predictedOccupancy <= 70 
+                                ? 'Register within the first week of course registration to secure your spot.' 
+                                : 'Register immediately when course registration opens.'}</li>
+                        <li>{predictedOccupancy > 70 
+                              ? 'Consider having a backup course in case this one fills up.' 
+                              : 'This course is less likely to reach capacity immediately.'}</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <h3 className="font-medium mb-2 text-gray-900">How we calculated this:</h3>
+                      <p className="text-gray-700 mb-2">
+                        Our prediction is based on historical enrollment data from previous semesters, with recent 
+                        semesters weighted more heavily. We analyze:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                        <li>Fill rates from previous terms</li>
+                        <li>How quickly the course reached capacity</li>
+                        <li>Recent enrollment trends</li>
+                        <li>Course popularity relative to available slots</li>
+                      </ul>
+                    </div>
+                    
+                    <div className="text-right">
+                      <button
+                        onClick={closeEnrollmentHistory}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

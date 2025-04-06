@@ -14,6 +14,8 @@ export type CourseRecommendation = {
   time_slot: string;
   reasons: string[];
   prerequisites?: string[];
+  hours_required?: number;
+  availability_score?: number;
 };
 
 interface RecommendationsContextType {

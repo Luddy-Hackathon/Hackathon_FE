@@ -32,8 +32,7 @@ export default function RootLayout({
           <AuthenticatedLayout>{children}</AuthenticatedLayout>
             <Toaster />
           </RecommendationsProvider>
-          
-          
+
         </AuthProvider>
       </body>
     </html>

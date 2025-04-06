@@ -2,12 +2,14 @@
 
 import { Metadata } from "next";
 import Dashboard from "@/components/Dashboard";
-
+import { RecommendationsProvider } from "@/context/RecommendationsContext";
 
 export default function HomePage() {
   return (
     <main>
-      <Dashboard />
+      <RecommendationsProvider>
+        <Dashboard />
+      </RecommendationsProvider>
     </main>
   );
 }

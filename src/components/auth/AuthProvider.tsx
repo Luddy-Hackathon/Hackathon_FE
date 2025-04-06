@@ -33,19 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           const currentUser = session?.user ?? null;
           setUser(currentUser);
-
-          if (currentUser) {
-            const { data: student, error: studentError } = await supabase
-                .from("students")
-                .select("*")
-                .eq("user_id", currentUser.id)
-                .single();
-
-            if (!student || studentError) {
-              console.log("Redirecting to profile setup...");
-              router.push("/profile-setup");
-            }
-          }
         }
       } catch (error) {
         console.error("Unexpected error getting session:", error);
@@ -65,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (event === 'SIGNED_IN') {
         setUser(session?.user ?? null);
-        router.push('/');
+        // Don't redirect on sign in, let the layout handle it
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         router.push('/signin');

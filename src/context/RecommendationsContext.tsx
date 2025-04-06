@@ -23,7 +23,7 @@ interface RecommendationsContextType {
   setRecommendations: (recommendations: CourseRecommendation[]) => void;
   updateRecommendations: CourseRecommendation[];
   setUpdateRecommendations: (recommendations: CourseRecommendation[]) => void;
-  applyUpdateRecommendations: () => void;
+  applyUpdateRecommendations: (immediateRecommendations?: CourseRecommendation[]) => void;
   courses: Course[];
   setCourses: (courses: Course[]) => void;
   recommendationsLoaded: boolean;
@@ -91,10 +91,20 @@ export function RecommendationsProvider({ children }: { children: ReactNode }) {
     // We don't need to save to localStorage here as the effect above will handle it
   };
 
-  const applyUpdateRecommendations = () => {
+  const applyUpdateRecommendations = (immediateRecommendations?: CourseRecommendation[]) => {
+    // If immediateRecommendations is provided, use that instead of the state
+    // This allows for immediate updates without state timing issues
+    if (immediateRecommendations && immediateRecommendations.length > 0) {
+      setRecommendations(immediateRecommendations);
+      console.log('RecommendationsContext: Applied immediate recommendations update');
+      return;
+    }
+    
+    // Otherwise, use the updateRecommendations state as before
     if (updateRecommendations.length > 0) {
       setRecommendations(updateRecommendations);
       setUpdateRecommendations([]);
+      console.log('RecommendationsContext: Applied pending recommendations update');
       
       // We don't need to save to localStorage here as the effect above will handle it
     }

@@ -117,7 +117,7 @@ function parseLLMResponse(text: string): { content: string; metadata?: Message['
         if (shouldRemoveJson) {
           // Only remove if not inside code blocks
           if (!cleanContent.includes("```") || !cleanContent.includes(jsonStr + "```")) {
-            cleanContent = cleanContent.replace(jsonStr, '');
+          cleanContent = cleanContent.replace(jsonStr, '');
           }
         }
       } catch (e) {
@@ -125,7 +125,7 @@ function parseLLMResponse(text: string): { content: string; metadata?: Message['
         console.warn('Failed to parse JSON block:', jsonStr, e);
       }
     }
-    
+
     // Clean up the content
     // 1. Remove markdown code blocks with json
     cleanContent = cleanContent.replace(/```json[\s\S]*?```/g, '');
@@ -154,7 +154,7 @@ function parseLLMResponse(text: string): { content: string; metadata?: Message['
     // 7. Final cleanup of multiple spaces and newlines
     cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
     cleanContent = cleanContent.replace(/\s{2,}/g, ' ').trim();
-    
+
     return { content: cleanContent, metadata };
   } catch (e) {
     console.error('Error parsing LLM response:', e);
@@ -248,7 +248,7 @@ function findCourseIdsByTitles(courseTitles: string[], availableCourses: Course[
   // First, try exact matches
   for (const title of courseTitles) {
     const normalizedTitle = title.toLowerCase().trim();
-    const course = availableCourses.find(c => 
+      const course = availableCourses.find(c => 
       c.title.toLowerCase() === normalizedTitle
     );
     
@@ -311,6 +311,7 @@ const CourseRecommendationUI = ({
 
   return (
     <div className="mt-4 space-y-3">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recommended Courses</h3>
       <div className="space-y-4">
         {courses.map((course, index) => (
           <div 
@@ -319,19 +320,11 @@ const CourseRecommendationUI = ({
           >
             <div className="flex justify-between items-center">
               <div>
-                <TextGenerateEffect 
-                  words={course.title}
-                  className="text-sm font-medium text-gray-900 dark:text-white"
-                  duration={1}
-                  filter={false}
-                />
+                <h4 className="text-sm font-medium text-gray-900 dark:text-white">{course.title}</h4>
                 <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                  <TextGenerateEffect 
-                    words={`${course.subject || 'General'} • ${course.difficulty_level || 'Intermediate'}`}
-                    className="text-[10px] text-gray-500 dark:text-gray-400"
-                    duration={1}
-                    filter={false}
-                  />
+                  <span>{course.subject || 'General'}</span>
+                  <span>•</span>
+                  <span>{course.difficulty_level || 'Intermediate'}</span>
                 </div>
               </div>
               <Button 
@@ -574,7 +567,7 @@ Available courses: ${courses.map(c => `${c.title} (${c.subject}, ${c.credits} cr
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-    
+
     // Check for low occupancy request
     if (input.toLowerCase().includes('low occupancy') || 
         input.toLowerCase().includes('less crowded') ||
@@ -679,8 +672,20 @@ Previously Recommended Courses: ${Array.from(recommendedCourseIds).map(id => {
   return course ? course.title : null;
 }).filter(Boolean).join(', ') || 'None'}
 
-Available courses with IDs: 
-${courses.map(c => `${c.title} (ID: ${c.id})`).join(', ')}
+Available courses with complete details: 
+${JSON.stringify(courses.map(course => ({
+  id: course.id,
+  title: course.title,
+  subject: course.subject,
+  credits: course.credits,
+  difficulty_level: course.difficulty_level,
+  time_slots: course.time_slots,
+  prerequisites: course.prerequisites,
+  career_paths: course.career_paths,
+  technical_level: course.technical_level,
+  description: course.description,
+  hours_required: course.hours_required
+})), null, 2)}
 
 Generate new course recommendations based on the above information. Focus on courses that:
 1. Align with the student's career goals and interests
@@ -831,12 +836,9 @@ Example response:
       // Create a new recommendations array by adding the new course
       const newRecommendations = [...recommendations, course];
       
-      // Update recommendations directly - this will trigger the 
-      // save to localStorage in RecommendationsContext
-      setRecommendations(newRecommendations);
-      
-      // Also update the updateRecommendations state to keep everything in sync
-      setUpdateRecommendations(newRecommendations);
+      // Apply the updates directly with the new recommendations array
+      // This ensures immediate update without timing issues
+      applyUpdateRecommendations(newRecommendations);
       
       console.log('Course added to dashboard:', course.title);
       
@@ -868,12 +870,9 @@ Example response:
       // Replace the old course with the new one
       newRecommendations[indexToReplace] = courseToAdd;
       
-      // Update recommendations directly - this will trigger the 
-      // save to localStorage in RecommendationsContext
-      setRecommendations(newRecommendations);
-      
-      // Also update the updateRecommendations state to keep everything in sync
-      setUpdateRecommendations(newRecommendations);
+      // Apply the updates directly with the new recommendations array
+      // This ensures immediate update without timing issues
+      applyUpdateRecommendations(newRecommendations);
       
       console.log('Course swapped in dashboard:', courseToAdd.title);
       
@@ -941,11 +940,66 @@ Example response:
           }
         }
         
+        let occupancyDescription = "high occupancy";
+        if (availScore <= 0.3) {
+          occupancyDescription = "very low occupancy";
+        } else if (availScore <= 0.5) {
+          occupancyDescription = "low occupancy";
+        } else if (availScore <= 0.7) {
+          occupancyDescription = "medium occupancy";
+        }
+        
+        // Create a comprehensive list of technologies and skills likely covered in the course
+        // This will help the model match user queries about specific technologies
+        const technicalSkills = [];
+        
+        // Add skills based on subject area
+        if (course.subject === 'Programming') {
+          technicalSkills.push('programming fundamentals', 'algorithms', 'data structures');
+        } else if (course.subject === 'Web Development') {
+          technicalSkills.push('HTML', 'CSS', 'JavaScript', 'web frameworks', 'responsive design');
+        } else if (course.subject === 'Database') {
+          technicalSkills.push('SQL', 'database design', 'data modeling', 'query optimization');
+        } else if (course.subject === 'Computer Science') {
+          technicalSkills.push('algorithms', 'data structures', 'discrete mathematics', 'computational theory');
+        } else if (course.subject === 'Data Science') {
+          technicalSkills.push('Python', 'R', 'statistical analysis', 'data visualization', 'machine learning');
+        } else if (course.subject === 'Artificial Intelligence') {
+          technicalSkills.push('machine learning', 'neural networks', 'NLP', 'computer vision', 'TensorFlow', 'PyTorch');
+        } else if (course.subject === 'Mobile Development') {
+          technicalSkills.push('iOS', 'Android', 'Swift', 'Kotlin', 'React Native', 'mobile UI design');
+        } else if (course.subject === 'Cybersecurity') {
+          technicalSkills.push('network security', 'encryption', 'ethical hacking', 'security principles');
+        }
+        
+        // Add inferred skills from the title and prerequisites
+        const titleLower = course.title.toLowerCase();
+        if (titleLower.includes('java')) {
+          technicalSkills.push('Java', 'object-oriented programming', 'Java frameworks');
+        } else if (titleLower.includes('python')) {
+          technicalSkills.push('Python', 'scripting', 'data analysis');
+        } else if (titleLower.includes('javascript') || titleLower.includes('js')) {
+          technicalSkills.push('JavaScript', 'ES6+', 'web development');
+        } else if (titleLower.includes('react')) {
+          technicalSkills.push('React', 'JavaScript', 'frontend development');
+        } else if (titleLower.includes('node')) {
+          technicalSkills.push('Node.js', 'JavaScript', 'backend development');
+        } else if (titleLower.includes('data')) {
+          technicalSkills.push('data analysis', 'SQL', 'statistics');
+        } else if (titleLower.includes('cloud')) {
+          technicalSkills.push('cloud computing', 'AWS', 'Azure', 'DevOps');
+        } else if (titleLower.includes('object')) {
+          technicalSkills.push('object-oriented programming', 'Java', 'C++', 'inheritance', 'polymorphism');
+        }
+        
         return {
           ...course,
           availability_score: availScore,
           difficulty_level: difficultyLevel,
-          occupancy_percent: Math.round((1 - availScore) * 100)
+          occupancy_percent: Math.round((1 - availScore) * 100),
+          occupancy: `${Math.round((1 - availScore) * 100)}% (${occupancyDescription})`,
+          description: course.description || `Course on ${course.subject || 'general topics'}.`,
+          technical_skills: technicalSkills.length > 0 ? [...new Set(technicalSkills)] : undefined
         };
       });
       
@@ -999,7 +1053,9 @@ Example response:
           reasons,
           prerequisites: course.prerequisites || [],
           hours_required: ('hours_required' in course) ? course.hours_required : undefined,
-          availability_score: course.availability_score
+          availability_score: course.availability_score,
+          description: course.description || `Course on ${course.subject || 'general topics'}.`,
+          technical_skills: course.technical_skills || []
         };
       });
       
@@ -1309,6 +1365,49 @@ Example response:
           occupancyDescription = "medium occupancy";
         }
         
+        // Create a comprehensive list of technologies and skills likely covered in the course
+        // This will help the model match user queries about specific technologies
+        const technicalSkills = [];
+        
+        // Add skills based on subject area
+        if (course.subject === 'Programming') {
+          technicalSkills.push('programming fundamentals', 'algorithms', 'data structures');
+        } else if (course.subject === 'Web Development') {
+          technicalSkills.push('HTML', 'CSS', 'JavaScript', 'web frameworks', 'responsive design');
+        } else if (course.subject === 'Database') {
+          technicalSkills.push('SQL', 'database design', 'data modeling', 'query optimization');
+        } else if (course.subject === 'Computer Science') {
+          technicalSkills.push('algorithms', 'data structures', 'discrete mathematics', 'computational theory');
+        } else if (course.subject === 'Data Science') {
+          technicalSkills.push('Python', 'R', 'statistical analysis', 'data visualization', 'machine learning');
+        } else if (course.subject === 'Artificial Intelligence') {
+          technicalSkills.push('machine learning', 'neural networks', 'NLP', 'computer vision', 'TensorFlow', 'PyTorch');
+        } else if (course.subject === 'Mobile Development') {
+          technicalSkills.push('iOS', 'Android', 'Swift', 'Kotlin', 'React Native', 'mobile UI design');
+        } else if (course.subject === 'Cybersecurity') {
+          technicalSkills.push('network security', 'encryption', 'ethical hacking', 'security principles');
+        }
+        
+        // Add inferred skills from the title and prerequisites
+        const titleLower = course.title.toLowerCase();
+        if (titleLower.includes('java')) {
+          technicalSkills.push('Java', 'object-oriented programming', 'Java frameworks');
+        } else if (titleLower.includes('python')) {
+          technicalSkills.push('Python', 'scripting', 'data analysis');
+        } else if (titleLower.includes('javascript') || titleLower.includes('js')) {
+          technicalSkills.push('JavaScript', 'ES6+', 'web development');
+        } else if (titleLower.includes('react')) {
+          technicalSkills.push('React', 'JavaScript', 'frontend development');
+        } else if (titleLower.includes('node')) {
+          technicalSkills.push('Node.js', 'JavaScript', 'backend development');
+        } else if (titleLower.includes('data')) {
+          technicalSkills.push('data analysis', 'SQL', 'statistics');
+        } else if (titleLower.includes('cloud')) {
+          technicalSkills.push('cloud computing', 'AWS', 'Azure', 'DevOps');
+        } else if (titleLower.includes('object')) {
+          technicalSkills.push('object-oriented programming', 'Java', 'C++', 'inheritance', 'polymorphism');
+        }
+        
         return {
           id: course.id,
           title: course.title,
@@ -1318,7 +1417,10 @@ Example response:
           occupancy: `${occupancyPercent}% (${occupancyDescription})`,
           hours_per_week: 'hours_required' in course ? course.hours_required : 'varies',
           career_paths: course.career_paths || [],
-          prerequisites: course.prerequisites || []
+          prerequisites: course.prerequisites || [],
+          description: course.description || `Course on ${course.subject || 'general topics'}.`,
+          technical_skills: technicalSkills.length > 0 ? [...new Set(technicalSkills)] : undefined,
+          time_slot: course.time_slots || 'Flexible'
         };
       });
       
@@ -1338,6 +1440,23 @@ Example response:
                              userInput.toLowerCase().includes('easy to get') ||
                              userInput.toLowerCase().includes('not full');
       
+      // Detect subject-specific queries by looking for technology/subject keywords
+      const subjectKeywords = [
+        'java', 'python', 'javascript', 'react', 'node', 'web', 'database', 'sql', 
+        'machine learning', 'ai', 'artificial intelligence', 'data science', 'cybersecurity',
+        'security', 'cloud', 'aws', 'azure', 'devops', 'mobile', 'ios', 'android',
+        'c++', 'c#', 'ruby', 'php', 'html', 'css', 'swift', 'kotlin', 'blockchain',
+        'programming', 'software', 'front-end', 'back-end', 'fullstack'
+      ];
+      
+      const queryWords = userInput.toLowerCase().split(/\W+/);
+      const detectedSubjects = subjectKeywords.filter(keyword => 
+        userInput.toLowerCase().includes(keyword) || 
+        queryWords.some(word => word === keyword.split(' ')[0])
+      );
+      
+      const isSubjectQuery = detectedSubjects.length > 0;
+      
       // Detect greeting or casual conversation
       const isGreeting = /^(hi|hello|hey|greetings|good (morning|afternoon|evening)|howdy)/i.test(userInput.trim());
       const isCasualQuestion = /(how are you|what'?s up|how'?s it going|how do you work)/i.test(userInput);
@@ -1356,6 +1475,17 @@ The user is asking about course occupancy/availability. When responding:
 - Prioritize recommending courses with lower occupancy rates
 - Be concise about occupancy percentages and their meaning
 - Mention when registration timing is important`;
+      } else if (isSubjectQuery) {
+        const subjectList = detectedSubjects.join(', ');
+        specialInstructions = `
+The user is asking about courses related to ${subjectList}. When responding:
+- Search course titles, descriptions, and prerequisites for relevant content
+- Even if no courses have "${subjectList}" directly in the title, find courses that would teach these skills
+- If looking for programming languages or technologies, find courses where these would be taught
+- Be intelligent about related technologies (e.g. for Java, also consider courses teaching OOP concepts)
+- Explain why each course is relevant to ${subjectList}
+- ALWAYS suggest relevant courses even if they don't have the exact keyword in the title
+- If no exact matches exist, suggest the closest alternatives that would help learn these skills`;
       } else if (isGreeting || isCasualQuestion) {
         specialInstructions = `
 The user is making casual conversation. When responding:
@@ -1387,6 +1517,14 @@ The user is making casual conversation. When responding:
                 
                 "Previously recommended: " + (previouslyRecommended.length > 0 ? previouslyRecommended.join(', ') : 'None') + "\n\n" +
                 
+                "IMPORTANT NOTE ABOUT TIME SLOTS: When you see time slots like 'MW 10:00-11:15', 'TR 14:30-15:45', or 'F 09:00-10:30', the letters represent days of the week where:\n" +
+                "- M = Monday\n" +
+                "- T = Tuesday\n" +
+                "- W = Wednesday\n" +
+                "- R = Thursday\n" +
+                "- F = Friday\n" +
+                "So 'MW' means Monday and Wednesday, 'TR' means Tuesday and Thursday.\n\n" +
+                
                 "Available courses with full details: \n" +
                 JSON.stringify(enhancedCourses.map(c => {
                   return {
@@ -1398,7 +1536,10 @@ The user is making casual conversation. When responding:
                     hours_per_week: c.hours_per_week,
                     occupancy: c.occupancy,
                     prerequisites: c.prerequisites,
-                    career_paths: c.career_paths
+                    career_paths: c.career_paths,
+                    description: c.description || `Course on ${c.subject}`,
+                    technical_skills: c.technical_skills || [],
+                    time_slot: c.time_slot
                   };
                 }), null, 2) + "\n\n" +
                 
@@ -1546,19 +1687,19 @@ The user is making casual conversation. When responding:
           
           {showTasks && (
             <div className="mt-2 pl-3 space-y-2 animate-fadeIn">
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                <Settings className="h-4 w-4" />
-                <span>Adjust current preferences</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                <Star className="h-4 w-4" />
-                <span>Find top matching courses</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                <HelpCircle className="h-4 w-4" />
-                <span>Get detailed course insights</span>
-              </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <Settings className="h-4 w-4" />
+              <span>Adjust current preferences</span>
             </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <Star className="h-4 w-4" />
+              <span>Find top matching courses</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <HelpCircle className="h-4 w-4" />
+              <span>Get detailed course insights</span>
+            </div>
+          </div>
           )}
         </div>
 
@@ -1599,114 +1740,104 @@ The user is making casual conversation. When responding:
           }
           
           return (
+          <div
+            key={index}
+            className={cn(
+              "flex",
+              message.role === 'user' ? 'justify-end' : 'justify-start'
+            )}
+          >
             <div
-              key={index}
               className={cn(
-                "flex",
-                message.role === 'user' ? 'justify-end' : 'justify-start'
+                "max-w-[92%] rounded-lg p-4",
+                message.role === 'user'
+                  ? 'bg-black text-white rounded-br-none'
+                  : 'bg-white dark:bg-gray-800 text-black dark:text-white rounded-bl-none shadow-sm'
               )}
             >
-              <div
-                className={cn(
-                  "max-w-[92%] rounded-lg p-4",
-                  message.role === 'user'
-                    ? ' text-white bg-black rounded-br-none'
-                    : 'bg-white dark:bg-gray-800 text-black dark:text-white rounded-bl-none shadow-sm'
-                )}
-              >
                 {message.role === 'assistant' ? (
-                  <div>
-                    <TextGenerateEffect 
-                      words={cleanedContent} 
-                      className="text-[13px] leading-[1.5] whitespace-pre-wrap text-gray-800 dark:text-gray-200"
-                      duration={1}
-                      filter={false}
-                    />
-                    {message.metadata?.recommendedCourses && 
-                     Array.isArray(message.metadata.recommendedCourses) && 
-                     message.metadata.recommendedCourses.length > 0 && 
-                     message.metadata.isRecommending && (
-                      <div className="mt-4">
-                        <TextGenerateEffect 
-                          words="Recommended Courses:"
-                          className="text-[13px] font-medium text-gray-800 dark:text-gray-200 mb-2"
-                          duration={1}
-                          filter={false}
-                        />
-                        <CourseRecommendationUI
-                          courses={message.metadata.recommendedCourses.map((id, idx) => {
-                            const course = courses.find(c => c.id === id);
-                            if (!course) {
-                              console.warn(`Course with ID ${id} not found in courses array`);
-                              return null;
-                            }
-                            
-                            // Get availability data
-                            const getCourseAvailability = async () => {
-                              try {
-                                const availData = await getCourseAvailabilityData([id]);
-                                return availData[id] || 0.7;
-                              } catch (error) {
-                                console.error('Error fetching availability data:', error);
-                                return 0.7;
-                              }
-                            };
-                            
-                            // Determine difficulty level based on hours_required if available
-                            let difficultyLevel = course.difficulty_level || 'Intermediate';
-                            if ('hours_required' in course && typeof course.hours_required === 'number') {
-                              if (course.hours_required < 4) {
-                                difficultyLevel = 'Beginner';
-                              } else if (course.hours_required >= 4 && course.hours_required < 8) {
-                                difficultyLevel = 'Intermediate';
-                              } else if (course.hours_required >= 8 && course.hours_required < 12) {
-                                difficultyLevel = 'Advanced';
-                              } else {
-                                difficultyLevel = 'Expert';
-                              }
-                            }
-                            
-                            // Generate detailed course-specific reasons if none provided
-                            let reasons = ['Recommended by AI Assistant'];
-                            if (course.subject) {
-                              reasons.push(`Covers key ${course.subject} concepts and skills`);
-                            }
-                            if (course.career_paths && Array.isArray(course.career_paths) && course.career_paths.length > 0) {
-                              reasons.push(`Relevant for ${course.career_paths[0]} career path`);
-                            }
-                            if ('hours_required' in course && typeof course.hours_required === 'number') {
-                              reasons.push(`Requires approximately ${course.hours_required} hours of work per week`);
-                            }
-                            
-                            const recommendation: CourseRecommendation = {
-                              course_id: id,
-                              title: course.title,
-                              subject: course.subject || 'General',
-                              credits: course.credits,
-                              match_score: 0.85,
-                              difficulty_level: difficultyLevel,
-                              time_slot: course.time_slots || 'Flexible',
-                              reasons: reasons,
-                              prerequisites: course.prerequisites || [],
-                              hours_required: ('hours_required' in course) ? course.hours_required : undefined,
-                              availability_score: 0.7
-                            };
-                            return recommendation;
-                          }).filter((course): course is CourseRecommendation => course !== null)}
-                          onAddToDashboard={handleAddToDashboard}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <TextGenerateEffect 
+                    words={cleanedContent} 
+                    className="text-[13px] leading-[1.5] whitespace-pre-wrap text-gray-800 dark:text-gray-200"
+                    duration={1}
+                    filter={false}
+                  />
                 ) : (
-                  <p className="text-[13px] leading-[1.5] whitespace-pre-wrap text-white">{cleanedContent}</p>
+                  <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{cleanedContent}</p>
                 )}
-                
-                <span className="text-xs opacity-70 mt-2 block">
-                  {message.timestamp.toLocaleTimeString()}
-                </span>
-              </div>
+
+                {message.role === 'assistant' && message.metadata?.recommendedCourses && 
+                 Array.isArray(message.metadata.recommendedCourses) && 
+                 message.metadata.recommendedCourses.length > 0 && 
+                 message.metadata.isRecommending && (
+                  <CourseRecommendationUI
+                    courses={message.metadata.recommendedCourses.map((id, idx) => {
+                      const course = courses.find(c => c.id === id);
+                      if (!course) {
+                        console.warn(`Course with ID ${id} not found in courses array`);
+                        return null;
+                      }
+                      
+                      // Get availability data
+                      const getCourseAvailability = async () => {
+                        try {
+                          const availData = await getCourseAvailabilityData([id]);
+                          return availData[id] || 0.7;
+                        } catch (error) {
+                          console.error('Error fetching availability data:', error);
+                          return 0.7;
+                        }
+                      };
+                      
+                      // Determine difficulty level based on hours_required if available
+                      let difficultyLevel = course.difficulty_level || 'Intermediate';
+                      if ('hours_required' in course && typeof course.hours_required === 'number') {
+                        if (course.hours_required < 4) {
+                          difficultyLevel = 'Beginner';
+                        } else if (course.hours_required >= 4 && course.hours_required < 8) {
+                          difficultyLevel = 'Intermediate';
+                        } else if (course.hours_required >= 8 && course.hours_required < 12) {
+                          difficultyLevel = 'Advanced';
+                        } else {
+                          difficultyLevel = 'Expert';
+                        }
+                      }
+                      
+                      // Generate detailed course-specific reasons if none provided
+                      let reasons = ['Recommended by AI Assistant'];
+                      if (course.subject) {
+                        reasons.push(`Covers key ${course.subject} concepts and skills`);
+                      }
+                      if (course.career_paths && Array.isArray(course.career_paths) && course.career_paths.length > 0) {
+                        reasons.push(`Relevant for ${course.career_paths[0]} career path`);
+                      }
+                      if ('hours_required' in course && typeof course.hours_required === 'number') {
+                        reasons.push(`Requires approximately ${course.hours_required} hours of work per week`);
+                      }
+                      
+                      return {
+                        course_id: id,
+                        title: course.title,
+                        subject: course.subject || 'General',
+                        credits: course.credits,
+                        match_score: 0.85,
+                        difficulty_level: difficultyLevel,
+                        time_slot: course.time_slots || 'Flexible',
+                        reasons: reasons,
+                        prerequisites: course.prerequisites || [],
+                        hours_required: ('hours_required' in course) ? course.hours_required : undefined,
+                        availability_score: 0.7 // Use a fixed default value instead of state
+                      };
+                    }).filter(Boolean) as CourseRecommendation[]}
+                    onAddToDashboard={handleAddToDashboard}
+                  />
+                )}
+
+              <span className="text-xs opacity-70 mt-2 block">
+                {message.timestamp.toLocaleTimeString()}
+              </span>
             </div>
+          </div>
           );
         })}
         <div ref={messagesEndRef} />
@@ -1721,7 +1852,7 @@ The user is making casual conversation. When responding:
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Ask me anything..."
-            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-gray-900 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-gray-900 text-black dark:text-white"
           />
           <button
             onClick={handleSend}

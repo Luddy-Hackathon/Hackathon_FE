@@ -586,17 +586,27 @@ function CreditStatusCard({ student, recommendations }: { student: Student, reco
   const recommendationCredits = recommendations.reduce((total, course) => total + course.credits, 0);
   const isWithinLimits = recommendationCredits >= minCredits && recommendationCredits <= maxCredits;
   
-  // Calculate estimated graduation date
-  const currentDate = new Date();
-  const semestersInMonths = semestersRemaining * 4; // Approximate 4 months per semester
-  const graduationDate = new Date(currentDate.setMonth(currentDate.getMonth() + semestersInMonths));
-  const graduationDateString = graduationDate.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long'
-  });
-
+  // Use state for date calculations to prevent hydration mismatch
+  const [graduationDateString, setGraduationDateString] = useState<string>("");
+  
   // Calculate progress percentage
   const progressPercentage = Math.round((student.credits_completed / totalCredits) * 100);
+  
+  // Move date calculations to useEffect to ensure they only happen on client
+  useEffect(() => {
+    // Calculate estimated graduation date (client-side only)
+    const currentDate = new Date();
+    const semestersInMonths = semestersRemaining * 4; // Approximate 4 months per semester
+    const graduationDate = new Date(currentDate);
+    graduationDate.setMonth(currentDate.getMonth() + semestersInMonths);
+    
+    const formattedDate = graduationDate.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long'
+    });
+    
+    setGraduationDateString(formattedDate);
+  }, [semestersRemaining]);
   
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
@@ -753,7 +763,7 @@ export default function Dashboard() {
         }
         
         console.log('Generated new recommendations via LLM');
-        setRecommendations(newRecommendations);
+    setRecommendations(newRecommendations);
         const now = new Date();
         setLastUpdated(now);
         console.log('Last updated timestamp set to:', now.toLocaleString());
@@ -944,8 +954,8 @@ export default function Dashboard() {
               <div className="text-center">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-2"></div>
                 <p className="text-gray-600">Generating personalized recommendations...</p>
+        </div>
             </div>
-          </div>
           ) : recommendations.length === 0 ? (
             <div className="col-span-full flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
               <div className="text-center max-w-md p-6">
@@ -964,9 +974,9 @@ export default function Dashboard() {
                     <ArrowPathIcon className="h-5 w-5 mr-2" />
                     Generate Recommendations
                   </button>
+          </div>
         </div>
             </div>
-          </div>
           ) : (
             recommendations.map((course, index) => (
               <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
@@ -977,7 +987,7 @@ export default function Dashboard() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-2">
                           {course.title}
                         </h3>
-      </div>
+          </div>
 
                       <div className="ml-4 flex-shrink-0">
                         <div className="relative w-10 h-10">
@@ -1008,8 +1018,8 @@ export default function Dashboard() {
                           <div className="absolute inset-0 flex items-center justify-center">
                             <span className="text-xs font-bold">{Math.round(course.match_score * 100)}%</span>
         </div>
-                        </div>
-                      </div>
+      </div>
+        </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-4 text-sm text-gray-600">

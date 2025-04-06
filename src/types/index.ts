@@ -8,6 +8,9 @@ export type Course = {
   prerequisites?: string[];
   career_paths?: string[];
   technical_level?: string;
+  description?: string;
+  hours_required?: number;
+  technical_skills?: string[];
 };
 
 export type Student = {

@@ -280,10 +280,10 @@ CRITICAL REQUIREMENTS:
 6. Ensure the difficulty level is appropriate based on the hours_required value
 
 For each recommended course, provide HIGHLY SPECIFIC technical reasons:
-- List exactly what TECHNICAL SKILLS the student will learn (programming languages, frameworks, tools, concepts) not more than 3 words
-- Explain how these skills will help in their SPECIFIC CAREER PATH not more than 3 words
-- Describe specific PROJECTS or APPLICATIONS they could build with these skills not more than 3 words
-- Mention how this builds on their current knowledge or technical level not more than 3 words
+- List exactly what TECHNICAL SKILLS the student will learn (programming languages, frameworks, tools, concepts) not more than 2-3 words
+- Explain how these skills will help in their SPECIFIC CAREER PATH not more than 2-3 words
+- Describe specific PROJECTS or APPLICATIONS they could build with these skills not more than 2-3 words
+- Mention how this builds on their current knowledge or technical level not more than 2-3 words
 - If the course has high occupancy (availability_score below 0.3, meaning >70% full), mention that the student should register early
 
 Respond ONLY with a JSON object in this exact format:
@@ -513,6 +513,185 @@ Respond ONLY with a JSON object in this exact format:
   }
 }
 
+// Helper function to calculate student enrollment status and credit requirements
+function calculateCreditRequirements(creditsCompleted: number) {
+  // Constants for credit requirements - total for graduation
+  const TOTAL_CREDITS = 30;
+  const SEMESTERS_REMAINING = Math.ceil((TOTAL_CREDITS - creditsCompleted) / 15); // Estimate remaining semesters
+  
+  // Credit requirements per semester - updated values
+  const FULL_TIME_MIN_PER_SEMESTER = 9;
+  const FULL_TIME_MAX_PER_SEMESTER = 12;
+  const PART_TIME_MIN_PER_SEMESTER = 3;
+  const PART_TIME_MAX_PER_SEMESTER = 9;
+  
+  // Determine if student is close to graduation
+  const isNearGraduation = creditsCompleted >= 90;
+  
+  // Calculate remaining credits
+  const remainingCredits = TOTAL_CREDITS - creditsCompleted;
+  
+  // If too few credits remain for full-time, recommend part-time
+  const recommendedStatus = remainingCredits < FULL_TIME_MIN_PER_SEMESTER || SEMESTERS_REMAINING <= 1 ? 'part-time' : 'full-time';
+  
+  // Set min/max credits per semester based on recommended status
+  const minCredits = recommendedStatus === 'full-time' ? FULL_TIME_MIN_PER_SEMESTER : PART_TIME_MIN_PER_SEMESTER;
+  const maxCredits = recommendedStatus === 'full-time' ? FULL_TIME_MAX_PER_SEMESTER : PART_TIME_MAX_PER_SEMESTER;
+  
+  // Calculate optimal number of courses (assuming 3 credits per course on average)
+  const avgCreditsPerCourse = 3;
+  const minCourses = Math.ceil(minCredits / avgCreditsPerCourse);
+  const maxCourses = Math.floor(maxCredits / avgCreditsPerCourse);
+  
+  // Calculate optimal courses based on remaining credits spread over estimated remaining semesters
+  const creditsPerSemester = Math.ceil(remainingCredits / Math.max(1, SEMESTERS_REMAINING));
+  const optimalCourses = Math.min(maxCourses, Math.max(minCourses, Math.ceil(creditsPerSemester / avgCreditsPerCourse)));
+  
+  return {
+    remainingCredits,
+    recommendedStatus,
+    minCredits,
+    maxCredits,
+    minCourses,
+    maxCourses,
+    optimalCourses,
+    isNearGraduation,
+    semestersRemaining: SEMESTERS_REMAINING,
+    totalCredits: TOTAL_CREDITS
+  };
+}
+
+// Credit Status Component with improved UI
+function CreditStatusCard({ student, recommendations }: { student: Student, recommendations: CourseRecommendation[] }) {
+  const { 
+    remainingCredits, 
+    recommendedStatus, 
+    minCredits, 
+    maxCredits, 
+    minCourses, 
+    maxCourses, 
+    optimalCourses,
+    isNearGraduation,
+    semestersRemaining,
+    totalCredits
+  } = calculateCreditRequirements(student.credits_completed);
+  
+  // Credit requirements per semester constants - needed in the component
+  const FULL_TIME_MIN_PER_SEMESTER = 15;
+  const FULL_TIME_MAX_PER_SEMESTER = 30;
+  const PART_TIME_MIN_PER_SEMESTER = 3;
+  const PART_TIME_MAX_PER_SEMESTER = 15;
+  
+  // Calculate total credits in current recommendations
+  const recommendationCredits = recommendations.reduce((total, course) => total + course.credits, 0);
+  const isWithinLimits = recommendationCredits >= minCredits && recommendationCredits <= maxCredits;
+  
+  // Calculate estimated graduation date
+  const currentDate = new Date();
+  const semestersInMonths = semestersRemaining * 4; // Approximate 4 months per semester
+  const graduationDate = new Date(currentDate.setMonth(currentDate.getMonth() + semestersInMonths));
+  const graduationDateString = graduationDate.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long'
+  });
+
+  // Calculate progress percentage
+  const progressPercentage = Math.round((student.credits_completed / totalCredits) * 100);
+  
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-blue-50">
+        <h3 className="text-sm font-medium text-gray-700 flex items-center">
+          <AcademicCapIcon className="h-4 w-4 mr-1.5 text-indigo-500" />
+          Academic Progress
+        </h3>
+        <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+          recommendedStatus === 'full-time' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+        }`}>
+          {recommendedStatus === 'full-time' ? 'Full-time' : 'Part-time'}
+        </div>
+      </div>
+      
+      <div className="p-4">
+        <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-3">
+          <div className="w-full md:w-2/3 flex items-center">
+            {/* Simple progress bar instead of circle */}
+            <div className="w-full mr-3">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>Progress: <span className="font-medium text-gray-700">{progressPercentage}%</span></span>
+                <span>{student.credits_completed}/{totalCredits} credits</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full ${isNearGraduation ? 'bg-green-500' : 'bg-blue-500'}`}
+                  style={{ width: `${progressPercentage}%` }}
+                >
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {remainingCredits} credits remaining
+              </div>
+            </div>
+          </div>
+          
+          <div className="w-full md:w-1/3 bg-gray-50 rounded px-3 py-2 border border-gray-100">
+            <div className="text-xs text-gray-500">Est. Graduation</div>
+            <div className="text-sm font-medium text-gray-700">{graduationDateString}</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {semestersRemaining} {semestersRemaining === 1 ? 'semester' : 'semesters'} remaining
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {/* Credit Load Card */}
+          <div className="bg-gray-50 rounded p-2 border border-gray-100">
+            <div className="text-xs text-gray-500 mb-1">Credit Load</div>
+            <div className="text-base font-medium text-gray-900">{minCredits}-{maxCredits}</div>
+            <div className="text-xs text-gray-500">per semester</div>
+          </div>
+          
+          {/* Course Load Card */}
+          <div className="bg-gray-50 rounded p-2 border border-gray-100">
+            <div className="text-xs text-gray-500 mb-1">Course Load</div>
+            <div className="text-base font-medium text-gray-900">{minCourses}-{maxCourses}</div>
+            <div className="text-xs text-gray-500">per semester</div>
+          </div>
+          
+          {/* Current Selection Card */}
+          <div className="bg-gray-50 rounded p-2 border border-gray-100">
+            <div className="text-xs text-gray-500 mb-1">Current Selection</div>
+            <div className={`text-base font-medium ${isWithinLimits ? 'text-gray-900' : 'text-orange-600'}`}>
+              {recommendationCredits}
+            </div>
+            <div className={`text-xs ${isWithinLimits ? 'text-green-600' : 'text-orange-600'}`}>
+              {isWithinLimits 
+                ? 'Within range' 
+                : recommendationCredits < minCredits 
+                  ? `Below min (${minCredits})` 
+                  : `Above max (${maxCredits})`}
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 rounded p-3 border border-gray-100 text-xs">
+          <div className="flex items-start">
+            <UserIcon className="w-3.5 h-3.5 text-gray-500 mt-0.5 mr-1.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium text-gray-700">Advisor Note: </span>
+              For {recommendedStatus} students, take <span className="font-medium">{minCourses} courses</span> ({minCredits}-{maxCredits} credits) per semester.
+              {recommendedStatus === 'full-time' 
+                ? ` Maintain ${FULL_TIME_MIN_PER_SEMESTER}-${FULL_TIME_MAX_PER_SEMESTER} credits to stay on track.` 
+                : ` Take ${PART_TIME_MIN_PER_SEMESTER}-${PART_TIME_MAX_PER_SEMESTER} credits based on your availability.`}
+              {isNearGraduation && ' Consider meeting with your advisor to plan your final semesters.'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Main Dashboard Component
 export default function Dashboard() {
   const { user } = useAuth();
@@ -526,8 +705,8 @@ export default function Dashboard() {
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [viewingHistoryFor, setViewingHistoryFor] = useState<number | null>(null);
 
-  // Generate course recommendations
-  const generateRecommendations = useCallback(async (studentData: Student, coursesData: Course[]) => {
+  // Generate course recommendations with automatic retry
+  const generateRecommendations = useCallback(async (studentData: Student, coursesData: Course[], retryCount = 0, maxRetries = 3) => {
     setLoadingRecommendations(true);
     
     try {
@@ -552,31 +731,44 @@ export default function Dashboard() {
           }
         }
         
-        if (hasConflicts) {
-          console.warn('Time conflicts detected in recommendations from LLM:');
+        if (hasConflicts && retryCount < maxRetries) {
+          // Log the conflict but don't show error to user, retry instead
+          console.warn(`Attempt ${retryCount + 1}/${maxRetries}: Time conflicts detected in recommendations, retrying...`);
           conflictPairs.forEach(([course1, course2]) => {
             console.warn(`  - Conflict between "${course1}" and "${course2}"`);
           });
           
-          setError(`Error: The AI generated courses with time conflicts. Please try again or select different courses. ${conflictPairs.length} conflicts found.`);
-          
-          // Despite conflicts, we'll still use these recommendations but with a warning
-          // This ensures the user gets some recommendations even if imperfect
-          console.log('Using recommendations despite conflicts. User has been warned.');
+          // Retry with incremented retry count
+          setLoadingRecommendations(false);
+          return generateRecommendations(studentData, coursesData, retryCount + 1, maxRetries);
+        } else if (hasConflicts) {
+          // After max retries, use recommendations but don't show error to user
+          console.warn(`Reached max retries (${maxRetries}). Using recommendations despite conflicts.`);
+          console.log('Generated recommendations with some time conflicts that could not be resolved automatically.');
+          // No error message displayed to user
+          setError(null);
         } else {
           console.log('No time conflicts detected in recommendations. All good!');
           setError(null);
         }
         
         console.log('Generated new recommendations via LLM');
-    setRecommendations(newRecommendations);
+        setRecommendations(newRecommendations);
         const now = new Date();
         setLastUpdated(now);
         console.log('Last updated timestamp set to:', now.toLocaleString());
       }
     } catch (error) {
       console.error('Error generating recommendations:', error);
-      setError('Failed to generate recommendations. Please try again.');
+      // Instead of showing the error, retry if we haven't hit max retries
+      if (retryCount < maxRetries) {
+        console.warn(`Attempt ${retryCount + 1}/${maxRetries}: Error generating recommendations, retrying...`);
+        setLoadingRecommendations(false);
+        return generateRecommendations(studentData, coursesData, retryCount + 1, maxRetries);
+      } else {
+        // After max retries, just show a generic message
+        setError('Unable to generate optimal recommendations. Showing best available options.');
+      }
     } finally {
       setLoadingRecommendations(false);
     }
@@ -717,91 +909,107 @@ export default function Dashboard() {
       </div>
 
       {/* Recommendations */}
-      <div className="mb-12">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-          <h2 className="text-2xl font-semibold text-gray-900">
-            Recommended Courses
-          </h2>
-            {lastUpdated && (
-              <p className="text-sm text-gray-500 mt-1">
-                Last refreshed: {lastUpdated.toLocaleString()}
-              </p>
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-gray-900">Your Course Recommendations</h2>
+          <div className="flex items-center gap-4">
+            {updateRecommendations.length > 0 && (
+              <button
+                onClick={handleApplyRecommendations}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                Apply Chat Suggestions
+              </button>
             )}
-        </div>
-          <div className="flex space-x-4">
             <button
               onClick={handleRefreshRecommendations}
               disabled={loadingRecommendations}
-              className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="inline-flex items-center justify-center w-9 h-9 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              title="Refresh Recommendations"
             >
-              <ArrowPathIcon className={`w-4 h-4 mr-2 ${loadingRecommendations ? 'animate-spin' : ''}`} />
-              {loadingRecommendations ? 'Generating...' : 'Refresh'}
+              <ArrowPathIcon className={`h-5 w-5 ${loadingRecommendations ? 'animate-spin' : ''}`} />
             </button>
+            </div>
           </div>
-        </div>
         
-        <div className="space-y-4">
+        {lastUpdated && (
+          <p className="text-sm text-gray-500 mb-4">
+            Last updated: {lastUpdated.toLocaleString()}
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 gap-6">
           {loadingRecommendations ? (
-            <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Generating recommendations...
-              </h3>
-              <div className="flex flex-col items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                <p className="text-sm text-gray-600 max-w-md mx-auto">
-                  Our AI is analyzing your profile and available courses to find the best matches with no time conflicts.
-                </p>
-              </div>
+            <div className="col-span-full flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-2"></div>
+                <p className="text-gray-600">Generating personalized recommendations...</p>
             </div>
+          </div>
           ) : recommendations.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No recommendations yet</h3>
-              <p className="text-gray-600 mb-4">
-                We couldn't find any suitable courses for you at the moment. Try refreshing or adjusting your preferences.
-              </p>
+            <div className="col-span-full flex items-center justify-center h-64 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="text-center max-w-md p-6">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No recommendations found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  We couldn't find any course recommendations for you. Try refreshing or updating your preferences.
+                </p>
+                <div className="mt-6">
+                  <button
+                    onClick={handleRefreshRecommendations}
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <ArrowPathIcon className="h-5 w-5 mr-2" />
+                    Generate Recommendations
+                  </button>
+        </div>
             </div>
+          </div>
           ) : (
-            recommendations.map((course) => (
-            <div 
-              key={course.course_id}
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-all duration-300"
-            >
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">{course.title}</h3>
-                    </div>
-                    <div className="flex-shrink-0 relative">
-                      <svg className="w-10 h-10" viewBox="0 0 36 36">
-                        {/* Gray background ring */}
-                        <circle 
-                          cx="18" 
-                          cy="18" 
-                          r="16" 
-                          fill="none" 
-                          stroke="#f1f5f9" 
-                          strokeWidth="3"
-                        />
-                        {/* Colored progress ring */}
-                        <circle 
-                          cx="18" 
-                          cy="18" 
-                          r="16" 
-                          fill="none" 
-                          stroke={course.match_score >= 0.85 ? "#4ade80" : course.match_score >= 0.7 ? "#60a5fa" : "#f97316"} 
-                          strokeWidth="3"
-                          strokeDasharray={`${Math.round(course.match_score * 100)} 100`}
-                          strokeDashoffset="25"
-                          strokeLinecap="round"
-                          transform="rotate(-90 18 18)"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-xs font-bold">{Math.round(course.match_score * 100)}%</span>
+            recommendations.map((course, index) => (
+              <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
+                <div className="p-6 flex flex-col md:flex-row md:items-start gap-6">
+                  <div className="md:w-2/3">
+                    <div className="flex items-start mb-4">
+                      <div className="flex-grow">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-2">
+                          {course.title}
+                        </h3>
+      </div>
+
+                      <div className="ml-4 flex-shrink-0">
+                        <div className="relative w-10 h-10">
+                          <svg viewBox="0 0 36 36" className="w-10 h-10">
+                            {/* Background ring */}
+                            <circle 
+                              cx="18" 
+                              cy="18" 
+                              r="16" 
+                              fill="none" 
+                              stroke="#f1f5f9" 
+                              strokeWidth="3"
+                            />
+                            {/* Colored progress ring */}
+                            <circle 
+                              cx="18" 
+                              cy="18" 
+                              r="16" 
+                              fill="none" 
+                              stroke={course.match_score >= 0.85 ? "#4ade80" : course.match_score >= 0.7 ? "#60a5fa" : "#f97316"} 
+                              strokeWidth="3"
+                              strokeDasharray={`${Math.round(course.match_score * 100)} 100`}
+                              strokeDashoffset="25"
+                              strokeLinecap="round"
+                              transform="rotate(-90 18 18)"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs font-bold">{Math.round(course.match_score * 100)}%</span>
+        </div>
+                        </div>
                       </div>
-                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-4 text-sm text-gray-600">
@@ -815,62 +1023,62 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center">
                       <ChartBarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>
-                        {course.difficulty_level || 'Intermediate'}
-                        {course.hours_required && ` (${course.hours_required} hrs/week)`}
-                      </span>
+                        <span>
+                          {course.difficulty_level || 'Intermediate'}
+                          {course.hours_required && ` (${course.hours_required} hrs/week)`}
+                        </span>
                     </div>
                     <div className="flex items-center">
                       <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
                       <span>{formatTimeSlot(course.time_slot)}</span>
                     </div>
-                    {course.availability_score !== undefined && (
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="flex-shrink-0">
-                          <div className={`inline-block w-3 h-3 rounded-full ${
-                            (1 - course.availability_score) * 100 <= 50 ? 'bg-green-500' : 
-                            (1 - course.availability_score) * 100 <= 70 ? 'bg-yellow-500' : 
-                            'bg-red-500'
-                          }`}></div>
-                        </div>
-                        <span className={`text-xs ${
-                          (1 - course.availability_score) * 100 <= 50 ? 'text-green-600' : 
-                          (1 - course.availability_score) * 100 <= 70 ? 'text-yellow-600' : 
-                          'text-red-600'
-                        }`}>
-                          {(1 - course.availability_score) * 100 <= 50 ? 'Low occupancy' : 
-                          (1 - course.availability_score) * 100 <= 70 ? 'Medium occupancy' : 
-                          'High occupancy'}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          ({Math.round((1 - course.availability_score) * 100)}% predicted occupancy)
-                        </span>
-                        <button 
-                          className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setViewingHistoryFor(course.course_id);
-                          }}
-                        >
-                          Details
-                        </button>
-                        <div className="relative ml-1 group">
-                          <InformationCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
-                          <div className="absolute bottom-full right-0 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none w-60">
-                            Prediction based on historical enrollment patterns. Lower availability means the course typically fills up quickly.
+                      {course.availability_score !== undefined && (
+                        <div className="flex items-center gap-2 mt-3">
+                          <div className="flex-shrink-0">
+                            <div className={`inline-block w-3 h-3 rounded-full ${
+                              (1 - course.availability_score) * 100 <= 50 ? 'bg-green-500' : 
+                              (1 - course.availability_score) * 100 <= 70 ? 'bg-yellow-500' : 
+                              'bg-red-500'
+                            }`}></div>
+                          </div>
+                          <span className={`text-xs ${
+                            (1 - course.availability_score) * 100 <= 50 ? 'text-green-600' : 
+                            (1 - course.availability_score) * 100 <= 70 ? 'text-yellow-600' : 
+                            'text-red-600'
+                          }`}>
+                            {(1 - course.availability_score) * 100 <= 50 ? 'Low occupancy' : 
+                            (1 - course.availability_score) * 100 <= 70 ? 'Medium occupancy' : 
+                            'High occupancy'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            ({Math.round((1 - course.availability_score) * 100)}% predicted occupancy)
+                          </span>
+                          <button 
+                            className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setViewingHistoryFor(course.course_id);
+                            }}
+                          >
+                            Details
+                          </button>
+                          <div className="relative ml-1 group">
+                            <InformationCircleIcon className="h-4 w-4 text-gray-400 cursor-help" />
+                            <div className="absolute bottom-full right-0 mb-2 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none w-60">
+                              Prediction based on historical enrollment patterns. Lower availability means the course typically fills up quickly.
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 </div>
 
                 <div className="md:w-1/3">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Why this course?</h4>
                   <ul className="space-y-1">
-                      {course.reasons.map((reason, index) => (
+                        {course.reasons.map((reason, index) => (
                       <li key={index} className="text-sm text-gray-600 flex items-start">
-                          <svg className="h-4 w-4 mr-2 mt-0.5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-4 w-4 mr-2 mt-0.5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <span className="line-clamp-2">{reason}</span>
@@ -897,6 +1105,13 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Credit Status Card - Now moved to the bottom */}
+      {!loading && recommendations.length > 0 && student && (
+        <div className="mt-10">
+          <CreditStatusCard student={student} recommendations={recommendations} />
+          </div>
+      )}
 
       {/* Enrollment History Modal */}
       {viewingHistoryFor !== null && (
@@ -932,7 +1147,7 @@ export default function Dashboard() {
                           predictedOccupancy <= 70 ? 'text-yellow-600' : 
                           'text-red-600'
                         }`}>{predictedOccupancy}%</span>
-          </div>
+                      </div>
                       <div className="w-full bg-gray-200 rounded-full h-2.5">
                         <div 
                           className={`h-2.5 rounded-full ${

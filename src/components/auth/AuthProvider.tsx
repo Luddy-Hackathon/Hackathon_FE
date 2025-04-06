@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { clearUserDataFromStorage } from "@/lib/utils";
 
 interface AuthContextType {
   user: User | null;
@@ -30,8 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("Error getting session:", error);
           setUser(null);
         } else {
-          console.log("Session found:", session?.user?.email);
-          setUser(session?.user ?? null);
+          const currentUser = session?.user ?? null;
+          setUser(currentUser);
         }
       } catch (error) {
         console.error("Unexpected error getting session:", error);
@@ -51,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (event === 'SIGNED_IN') {
         setUser(session?.user ?? null);
-        router.push('/');
+        // Don't redirect on sign in, let the layout handle it
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         router.push('/signin');
@@ -123,6 +124,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       console.log("Attempting sign out...");
+      
+      // Clear user data from localStorage
+      if (user?.id) {
+        clearUserDataFromStorage(user.id);
+      }
+      
       await supabase.auth.signOut();
       router.push("/signin");
     } catch (error) {

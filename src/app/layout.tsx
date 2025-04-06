@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import AuthenticatedLayout from "@/components/layout/AuthenticatedLayout";
+import { RecommendationsProvider } from "@/context/RecommendationsContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,7 +26,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={cn("antialiased", inter.variable)}>
         <AuthProvider>
-          <AuthenticatedLayout>{children}</AuthenticatedLayout>
+          <RecommendationsProvider>
+            <AuthenticatedLayout>{children}</AuthenticatedLayout>
+          </RecommendationsProvider>
         </AuthProvider>
       </body>
     </html>

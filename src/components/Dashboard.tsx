@@ -4,66 +4,17 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { AcademicCapIcon, BookOpenIcon, ClockIcon, ChartBarIcon, UserIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
-import OpenAI from 'openai';
-import * as tf from '@tensorflow/tfjs';
+import { AcademicCapIcon, BookOpenIcon, ClockIcon, ChartBarIcon, UserIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import { useRecommendations } from "@/context/RecommendationsContext";
 
-// Google AI Studio Configuration
-const llmConfig = {
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/models",
-  model: "gemini-2.0-flash", // Google's Gemini Pro model
-  apiKey: "AIzaSyCr_h_JIkt4-_Aa-kOWmE0Ff1_KZ6XMsIE", // Replace with your Google AI Studio API key
-  dangerouslyAllowBrowser: true
+// API Config
+const API_CONFIG = {
+  url: process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models',
+  model: process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-1.5-flash',
+  key: process.env.NEXT_PUBLIC_GEMINI_API_KEY
 };
 
-// Enhanced cache utilities with longer duration and better error handling
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-interface CacheItem<T> {
-  data: T;
-  timestamp: number;
-}
-
-const cacheUtils = {
-  set<T>(key: string, data: T): void {
-    try {
-      const item: CacheItem<T> = {
-        data,
-        timestamp: Date.now()
-      };
-      localStorage.setItem(key, JSON.stringify(item));
-    } catch (error) {
-      console.warn('Cache write failed:', error);
-    }
-  },
-
-  get<T>(key: string): T | null {
-    try {
-      const item = localStorage.getItem(key);
-      if (!item) return null;
-
-      const { data, timestamp }: CacheItem<T> = JSON.parse(item);
-      if (Date.now() - timestamp > CACHE_DURATION) {
-        localStorage.removeItem(key);
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.warn('Cache read failed:', error);
-      return null;
-    }
-  },
-
-  remove(key: string): void {
-    try {
-      localStorage.removeItem(key);
-    } catch (error) {
-      console.warn('Cache remove failed:', error);
-    }
-  }
-};
-
+// Types
 type Course = {
   id: number;
   title: string;
@@ -74,6 +25,7 @@ type Course = {
   prerequisites?: string[];
   career_paths?: string[];
   technical_level?: string;
+  description?: string;
 };
 
 type Student = {
@@ -101,511 +53,373 @@ type CourseRecommendation = {
   prerequisites?: string[];
 };
 
-// ML Model for Collaborative Filtering
-class RecommenderModel {
-  private model: tf.Sequential;
-
-  constructor(numUsers: number, numCourses: number, embeddingDim: number = 50) {
-    this.model = tf.sequential({
-      layers: [
-        tf.layers.embedding({
-          inputDim: numUsers,
-          outputDim: embeddingDim,
-          inputLength: 1
-        }),
-        tf.layers.embedding({
-          inputDim: numCourses,
-          outputDim: embeddingDim,
-          inputLength: 1
-        }),
-        tf.layers.dot({axes: 2}),
-        tf.layers.dense({units: 1, activation: 'sigmoid'})
-      ]
-    });
-
-    this.model.compile({
-      optimizer: 'adam',
-      loss: 'binaryCrossentropy',
-      metrics: ['accuracy']
-    });
-  }
-
-  async train(
-    userIds: number[],
-    courseIds: number[],
-    ratings: number[],
-    epochs: number = 10
-  ) {
-    const xs = [tf.tensor1d(userIds), tf.tensor1d(courseIds)];
-    const ys = tf.tensor1d(ratings);
-
-    await this.model.fit(xs, ys, {
-      epochs,
-      batchSize: 32,
-      validationSplit: 0.2
-    });
-  }
-
-  predict(userId: number, courseId: number): number {
-    const prediction = this.model.predict([
-      tf.tensor1d([userId]),
-      tf.tensor1d([courseId])
-    ]) as tf.Tensor;
-    return prediction.dataSync()[0];
-  }
-}
-
-function calculateMatchScore(course: Course, student: Student): { score: number; reasons: string[] } {
-  let score = 0;
-  const reasons: string[] = [];
-
-  // Career path alignment (30% weight)
-  if (course.career_paths && course.career_paths.includes(student.career_goal_id)) {
-    score += 30;
-    reasons.push("Aligns with your career goals");
-  }
-
-  // Technical level match (25% weight)
-  const techLevels = { "Beginner": 1, "Intermediate": 2, "Advanced": 3 };
-  const courseTechLevel = course.technical_level ? techLevels[course.technical_level as keyof typeof techLevels] : 1;
-  const studentTechLevel = techLevels[student.technical_proficiency as keyof typeof techLevels];
-  
-  if (courseTechLevel === studentTechLevel) {
-    score += 25;
-    reasons.push("Matches your technical proficiency");
-  } else if (courseTechLevel === studentTechLevel + 1) {
-    score += 15;
-    reasons.push("Slightly challenging for your current level");
-  }
-
-  // Subject preference match (20% weight)
-  if (course.subject && student.preferred_subjects.includes(course.subject)) {
-    score += 20;
-    reasons.push("Matches your subject preferences");
-  }
-
-  // Time slot preference match (15% weight)
-  if (course.time_slots && course.time_slots === student.course_slot_preference) {
-    score += 15;
-    reasons.push("Available in your preferred time slot");
-  }
-
-  // Prerequisites check (10% weight)
-  const hasPrerequisites = course.prerequisites ? 
-    course.prerequisites.every(prereq => student.current_courses_taken.includes(prereq)) :
-    true;
-  if (hasPrerequisites) {
-    score += 10;
-    reasons.push("You meet all prerequisites");
-  }
-
-  return { score: score / 100, reasons };
-}
-
-// Enhanced match score calculation
-function calculateEnhancedMatchScore(course: Course, student: Student): { score: number; reasons: string[] } {
-  let score = 0;
-  const reasons: string[] = [];
-
-  // Career path alignment (30% weight)
-  if (course.career_paths && course.career_paths.includes(student.career_goal_id)) {
-    score += 30;
-    reasons.push("Aligns with your career goals");
-  }
-
-  // Technical level match (25% weight)
-  const techLevels = { "Beginner": 1, "Intermediate": 2, "Advanced": 3 };
-  const courseTechLevel = course.technical_level ? techLevels[course.technical_level as keyof typeof techLevels] : 1;
-  const studentTechLevel = techLevels[student.technical_proficiency as keyof typeof techLevels];
-  
-  if (courseTechLevel === studentTechLevel) {
-    score += 25;
-    reasons.push("Matches your technical proficiency");
-  } else if (courseTechLevel === studentTechLevel + 1) {
-    score += 15;
-    reasons.push("Slightly challenging for your current level");
-  }
-
-  // Subject preference match (20% weight)
-  if (course.subject && student.preferred_subjects.includes(course.subject)) {
-    score += 20;
-    reasons.push("Matches your subject preferences");
-  }
-
-  // Time slot preference match (15% weight)
-  if (course.time_slots && course.time_slots === student.course_slot_preference) {
-    score += 15;
-    reasons.push("Available in your preferred time slot");
-  }
-
-  // Prerequisites check (10% weight)
-  const hasPrerequisites = course.prerequisites ? 
-    course.prerequisites.every(prereq => student.current_courses_taken.includes(prereq)) :
-    true;
-  if (hasPrerequisites) {
-    score += 10;
-    reasons.push("You meet all prerequisites");
-  }
-
-  // Course difficulty based on credits (bonus)
-  if (course.credits <= 3 && student.credits_completed < 30) {
-    score += 5;
-    reasons.push("Suitable for early-stage students");
-  } else if (course.credits > 3 && student.credits_completed >= 30) {
-    score += 5;
-    reasons.push("Appropriate for advanced students");
-  }
-
-  return { score: score / 100, reasons };
-}
-
-// Utility function to clean JSON response from LLM
-function cleanJsonResponse(content: string): string {
-  // Remove markdown code blocks if present
-  content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-  // Remove any leading/trailing whitespace
-  return content.trim();
-}
-
-// Utility function for delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Enhanced rate limiter with better queue management
-class RateLimiter {
-  private static instance: RateLimiter;
-  private lastRequestTime: number = 0;
-  private requestQueue: (() => Promise<void>)[] = [];
-  private isProcessing: boolean = false;
-  private readonly minDelay: number = 2000; // 2 seconds between requests
-  private readonly maxRetries: number = 3;
-  private readonly retryDelay: number = 5000; // 5 seconds between retries
-
-  private constructor() {}
-
-  static getInstance(): RateLimiter {
-    if (!RateLimiter.instance) {
-      RateLimiter.instance = new RateLimiter();
-    }
-    return RateLimiter.instance;
-  }
-
-  async enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const executeRequest = async (retryCount = 0) => {
-        try {
-          const now = Date.now();
-          const timeSinceLastRequest = now - this.lastRequestTime;
-          const delay = Math.max(0, this.minDelay - timeSinceLastRequest);
-
-          if (delay > 0) {
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-
-          this.lastRequestTime = Date.now();
-          const result = await fn();
-          resolve(result);
-        } catch (error: any) {
-          if (error?.status === 429 && retryCount < this.maxRetries) {
-            console.log(`Rate limited, retrying in ${this.retryDelay/1000} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-            return executeRequest(retryCount + 1);
-          }
-          reject(error);
-        }
-      };
-
-      this.requestQueue.push(() => executeRequest());
-      this.processQueue();
-    });
-  }
-
-  private async processQueue() {
-    if (this.isProcessing || this.requestQueue.length === 0) return;
-
-    this.isProcessing = true;
-    const request = this.requestQueue.shift();
-    if (request) {
-      await request();
-    }
-    this.isProcessing = false;
-    this.processQueue();
-  }
-}
-
-// Helper function to create the API client
-async function getRecommendationsFromLLM(prompt: string): Promise<any> {
+// Utility to check for time slot conflicts
+function hasTimeConflict(timeSlot1: any, timeSlot2: any): boolean {
   try {
-    const response = await fetch(`${llmConfig.baseURL}/${llmConfig.model}:generateContent?key=${llmConfig.apiKey}`, {
+    if (!timeSlot1 || !timeSlot2) return false;
+    
+    // Parse time slots based on their type
+    const parseTimeSlot = (slot: any): { days: string, time: string } | null => {
+      if (!slot) return null;
+      
+      // If it's already an object with days and time
+      if (typeof slot === 'object' && slot.days && slot.time) {
+        return { days: slot.days, time: slot.time };
+      }
+      
+      // If it's a string that looks like JSON
+      if (typeof slot === 'string' && slot.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(slot);
+          if (parsed.days && parsed.time) {
+            return { days: parsed.days, time: parsed.time };
+          }
+        } catch (e) {
+          console.error("Error parsing time slot JSON:", e);
+        }
+      }
+      
+      // If it's a string in format "MWF 10:00-11:15"
+      if (typeof slot === 'string' && /^[MTWRFSU]+ \d+:\d+-\d+:\d+$/.test(slot)) {
+        const parts = slot.split(' ');
+        return { days: parts[0], time: parts[1] };
+      }
+      
+      return null;
+    };
+    
+    const slot1 = parseTimeSlot(timeSlot1);
+    const slot2 = parseTimeSlot(timeSlot2);
+    
+    // If either slot couldn't be parsed, assume no conflict
+    if (!slot1 || !slot2) return false;
+    
+    // Check for day overlaps
+    const days1 = slot1.days.split('');
+    const days2 = slot2.days.split('');
+    
+    const commonDays = days1.filter(day => days2.includes(day));
+    if (commonDays.length === 0) return false;
+    
+    // If days overlap, check times
+    const [start1, end1] = slot1.time.split('-');
+    const [start2, end2] = slot2.time.split('-');
+    
+    // Convert times to minutes for easier comparison
+    const timeToMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(num => parseInt(num));
+      return hours * 60 + minutes;
+    };
+    
+    const start1Mins = timeToMinutes(start1);
+    const end1Mins = timeToMinutes(end1);
+    const start2Mins = timeToMinutes(start2);
+    const end2Mins = timeToMinutes(end2);
+    
+    // Check for time overlap
+    return !(end1Mins <= start2Mins || end2Mins <= start1Mins);
+  } catch (e) {
+    console.error('Error comparing time slots:', e);
+    return false; // Assume no conflict if we can't determine
+  }
+}
+
+// Format time slot for display
+function formatTimeSlot(timeSlot: any): string {
+  if (!timeSlot) return 'Flexible';
+  
+  try {
+    // Handle object format directly
+    if (typeof timeSlot === 'object') {
+      const { days, time } = timeSlot;
+      
+      const dayMap: Record<string, string> = {
+        'M': 'Monday',
+        'T': 'Tuesday',
+        'W': 'Wednesday',
+        'R': 'Thursday',
+        'F': 'Friday'
+      };
+      
+      if (days && time) {
+        const formattedDays = days.split('').map((day: string) => dayMap[day] || day).join(', ');
+        return `${formattedDays} ${time}`;
+      }
+      return JSON.stringify(timeSlot);
+    }
+    
+    // Handle string format
+    const timeSlotStr = String(timeSlot);
+    if (timeSlotStr.startsWith('{')) {
+      try {
+        const slotData = JSON.parse(timeSlotStr);
+        const { days, time } = slotData;
+        
+        const dayMap: Record<string, string> = {
+          'M': 'Monday',
+          'T': 'Tuesday',
+          'W': 'Wednesday',
+          'R': 'Thursday',
+          'F': 'Friday'
+        };
+        
+        const formattedDays = days.split('').map((day: string) => dayMap[day] || day).join(', ');
+        return `${formattedDays} ${time}`;
+      } catch (jsonError) {
+        console.error('Error parsing time slot JSON:', jsonError);
+        return timeSlotStr;
+      }
+    } else {
+      return timeSlotStr;
+    }
+  } catch (error) {
+    console.error('Error formatting time slot:', error);
+    return String(timeSlot) || 'Flexible';
+  }
+}
+
+// Get course recommendations from LLM
+async function getRecommendationsFromLLM(student: Student, courses: Course[]): Promise<CourseRecommendation[]> {
+  if (!API_CONFIG.key) {
+    console.error('Missing API key');
+    return [];
+  }
+
+  try {
+    console.log('Generating course recommendations...');
+    
+    // Create a concise student profile
+    const studentProfile = {
+      career_goal: student.career_goal_id,
+      technical_level: student.technical_proficiency,
+      preferred_subjects: student.preferred_subjects,
+      time_slot_preference: student.course_slot_preference,
+      current_courses: student.current_courses_taken,
+      credits_completed: student.credits_completed
+    };
+    
+    // Select appropriate courses for recommendation
+    const coursesData = courses.map(course => ({
+      id: course.id,
+      title: course.title,
+      subject: course.subject,
+      credits: course.credits,
+      difficulty_level: course.difficulty_level,
+      time_slots: course.time_slots,
+      prerequisites: course.prerequisites,
+      career_paths: course.career_paths,
+      technical_level: course.technical_level,
+      description: course.description || `Course on ${course.subject}`
+    }));
+    
+    // Create an optimized prompt
+    const prompt = `You are a course recommendation expert with deep technical knowledge. Recommend exactly 3 courses for a student with NO TIME CONFLICTS between them.
+
+Student Profile:
+${JSON.stringify(studentProfile, null, 2)}
+
+Available Courses:
+${JSON.stringify(coursesData, null, 2)}
+
+Important requirements:
+1. The 3 courses MUST NOT have time conflicts with each other
+2. Prioritize courses that align with the student's career goal
+3. Consider the student's technical level and preferred subjects
+4. Check for prerequisites (student should have taken them already)
+
+For each recommended course, provide HIGHLY SPECIFIC technical reasons:
+- List exactly what TECHNICAL SKILLS the student will learn (programming languages, frameworks, tools, concepts) not more than 4 words
+- Explain how these skills will help in their SPECIFIC CAREER PATH
+- Describe specific PROJECTS or APPLICATIONS they could build with these skills
+- Mention how this builds on their current knowledge or technical level
+
+Respond ONLY with a JSON object in this exact format:
+{
+  "recommendations": [
+    {
+      "course_id": 123,
+      "match_score": 0.95,
+      "reasons": [
+        "Learn React.js, Redux, and React Hooks for building responsive single-page applications",
+        "Develop skills in modern JavaScript ES6+ features needed for frontend development",
+        "Build a portfolio-ready e-commerce project with authentication and payment processing"
+      ]
+    }
+  ]
+}`;
+
+    // Call the LLM API
+    const response = await fetch(`${API_CONFIG.url}/${API_CONFIG.model}:generateContent?key=${API_CONFIG.key}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.7,
-          topP: 0.95,
+          temperature: 0.3,
+          topP: 0.8,
           topK: 40,
-          maxOutputTokens: 1000
+          maxOutputTokens: 1024
         }
       })
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Google AI API Error:', errorData);
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`API error: ${response.status}`);
     }
 
-    const result = await response.json();
-    const responseText = result.candidates[0].content.parts[0].text;
+    const data = await response.json();
+    const responseText = data.candidates[0].content.parts[0].text;
     
-    // Extract JSON from the response text
+    // Extract JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
     }
     
-    return jsonMatch[0];
-  } catch (error) {
-    console.error('Error calling Google AI API:', error);
-    throw error;
-  }
-}
-
-// Move MLRecommender outside the Dashboard component
-function MLRecommender({ student, courses, onRecommendationsGenerated }: {
-  student: Student;
-  courses: Course[];
-  onRecommendationsGenerated: (recommendations: CourseRecommendation[]) => void;
-}) {
-  const [hasError, setHasError] = useState(false);
-  const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
-  const [hasGenerated, setHasGenerated] = useState(false);
-
-  const generateRecommendations = useCallback(async () => {
-    if (hasError || isGeneratingRecommendations || hasGenerated) return;
-
-    setIsGeneratingRecommendations(true);
-    console.log('MLRecommender: Starting recommendation generation');
-
-    try {
-      // Check cache first
-      const cacheKey = `recommendations-${student.id}`;
-      const cached = cacheUtils.get<CourseRecommendation[]>(cacheKey);
-      if (cached) {
-        console.log('Using cached recommendations');
-        onRecommendationsGenerated(cached);
-        setHasGenerated(true);
-        return;
-      }
-
-      const studentProfile = {
-        career_goal: student.career_goal_id,
-        tech_level: student.technical_proficiency,
-        subjects: student.preferred_subjects,
-        time_slot: student.course_slot_preference,
-        current_courses: student.current_courses_taken,
-        credits: student.credits_completed
-      };
-
-      const relevantCourses = courses
-        .filter(course => {
-          const hasMatchingSubject = !course.subject || student.preferred_subjects.includes(course.subject);
-          const hasMatchingTimeSlot = !course.time_slots || course.time_slots === student.course_slot_preference;
-          return hasMatchingSubject || hasMatchingTimeSlot;
-        })
-        .slice(0, 10);
-
-      const prompt = `You are a course recommendation expert. Analyze this student profile and course data to provide 3 personalized recommendations.
-      
-Student Profile:
-${JSON.stringify(studentProfile, null, 2)}
-
-Available Courses:
-${JSON.stringify(relevantCourses, null, 2)}
-
-Provide recommendations in this exact JSON format (no additional text or explanation):
-{
-  "recommendations": [
-    {
-      "course_id": "string",
-      "match_score": number,
-      "reasons": ["string"]
-    }
-  ]
-}`;
-
-      const response = await getRecommendationsFromLLM(prompt);
-      let llmRecommendations;
-      try {
-        llmRecommendations = JSON.parse(response);
-      } catch (parseError) {
-        console.error('MLRecommender: Error parsing LLM response:', parseError);
-        throw new Error('Failed to parse LLM response');
-      }
-
-      if (!llmRecommendations.recommendations || !Array.isArray(llmRecommendations.recommendations)) {
-        throw new Error('Invalid recommendations format');
-      }
-
-      const recommendations = llmRecommendations.recommendations
+    const recommendations = JSON.parse(jsonMatch[0]);
+    
+    // Format recommendations with course details
+    return recommendations.recommendations
         .map((rec: any) => {
-          const courseId = parseInt(rec.course_id, 10);
-          if (isNaN(courseId)) return null;
-          
-          const course = courses.find(c => c.id === courseId);
+        const course = courses.find(c => c.id === rec.course_id);
           if (!course) return null;
-
-          const baseScore = calculateMatchScore(course, student);
 
           return {
             course_id: course.id,
             title: course.title,
-            subject: course.subject,
+          subject: course.subject || 'General',
             credits: course.credits,
-            match_score: (baseScore.score + (rec.match_score || 0)) / 2,
-            difficulty_level: course.difficulty_level,
-            time_slot: course.time_slots,
-            reasons: [...new Set([...baseScore.reasons, ...(rec.reasons || [])])],
-            prerequisites: course.prerequisites
+          match_score: rec.match_score || 0.7,
+          difficulty_level: course.difficulty_level || 'Intermediate',
+          time_slot: typeof course.time_slots === 'object' ? 
+            JSON.stringify(course.time_slots) : course.time_slots,
+          reasons: rec.reasons || ['Recommended based on your profile'],
+          prerequisites: course.prerequisites || []
           };
         })
         .filter(Boolean);
-
-      // Cache the results
-      cacheUtils.set(cacheKey, recommendations);
-      onRecommendationsGenerated(recommendations);
-      setHasGenerated(true);
     } catch (error) {
-      console.error('MLRecommender: Error in recommendation generation:', error);
-      setHasError(true);
-      
-      // Fallback to basic recommendations
-      const basicRecommendations = courses.map(course => ({
-        course_id: course.id,
-        title: course.title,
-        subject: course.subject,
-        credits: course.credits,
-        match_score: calculateMatchScore(course, student).score,
-        difficulty_level: course.difficulty_level,
-        time_slot: course.time_slots,
-        reasons: calculateMatchScore(course, student).reasons,
-        prerequisites: course.prerequisites
-      }))
-      .filter(rec => rec.match_score > 0.5)
-      .sort((a, b) => b.match_score - a.match_score)
-      .slice(0, 3);
-
-      onRecommendationsGenerated(basicRecommendations);
-      setHasGenerated(true);
-    } finally {
-      setIsGeneratingRecommendations(false);
-    }
-  }, [student.id, courses, onRecommendationsGenerated, hasError, isGeneratingRecommendations, hasGenerated]);
-
-  useEffect(() => {
-    generateRecommendations();
-  }, [generateRecommendations]);
-
-  return null;
-}
-
-// Utility functions for historical data analysis
-function calculateSuccessRate(courseId: string, historicalData: any[]): number {
-  const courseData = historicalData.filter(d => d.courseId === courseId);
-  if (courseData.length === 0) return 0;
-  const successfulCompletions = courseData.filter(d => d.completed).length;
-  return (successfulCompletions / courseData.length) * 100;
-}
-
-function calculateAverageRating(courseId: string, historicalData: any[]): number {
-  const courseRatings = historicalData
-    .filter(d => d.courseId === courseId)
-    .map(d => d.rating);
-  if (courseRatings.length === 0) return 0;
-  return courseRatings.reduce((a, b) => a + b) / courseRatings.length;
-}
-
-// Move cache utilities to a custom hook
-function useLocalStorage<T>(key: string, initialValue: T) {
-  // Initialize state with a function to avoid executing localStorage during SSR
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') {
-      return initialValue;
-    }
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.warn(`Error reading localStorage key "${key}":`, error);
-      return initialValue;
-    }
-  });
-
-  // Return a wrapped version of useState's setter function that persists the new value to localStorage
-  const setValue = (value: T | ((val: T) => T)) => {
-    try {
-      // Allow value to be a function so we have same API as useState
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
-      }
-    } catch (error) {
-      console.warn(`Error setting localStorage key "${key}":`, error);
-    }
-  };
-
-  return [storedValue, setValue] as const;
-}
-
-// Update the formatTimeSlot function
-function formatTimeSlot(timeSlot: string | { days: string; time: string }): string {
-  if (!timeSlot) return 'Flexible';
-  
-  try {
-    // If timeSlot is already an object, use it directly
-    const slotData = typeof timeSlot === 'string' ? JSON.parse(timeSlot) : timeSlot;
-    const { days, time } = slotData;
+    console.error('Error getting LLM recommendations:', error);
     
-    const dayMap: Record<string, string> = {
-      'M': 'Monday',
-      'T': 'Tuesday',
-      'W': 'Wednesday',
-      'R': 'Thursday',
-      'F': 'Friday'
-    };
-    
-    const formattedDays = days.split('').map((day: string) => dayMap[day] || day).join(', ');
-    return `${formattedDays} ${time}`;
-  } catch (error) {
-    console.error('Error formatting time slot:', error);
-    return 'Flexible';
+    // Return basic recommendations as fallback
+    return courses
+      .slice(0, 3)
+      .map(course => {
+        // Generate course-specific technical reasons based on available course data
+        const reasons: string[] = [];
+        
+        // Map subjects to specific technical skills
+        const subjectToSkills: Record<string, string[]> = {
+          'Computer Science': ['Data structures', 'Algorithms', 'Problem-solving methodologies'],
+          'Programming': ['Software architecture', 'Design patterns', 'Version control systems'],
+          'Web Development': ['HTML5/CSS3', 'JavaScript frameworks', 'Responsive design'],
+          'Data Science': ['Python libraries (Pandas, NumPy)', 'Statistical analysis', 'Data visualization'],
+          'Artificial Intelligence': ['Machine learning algorithms', 'Neural networks', 'TensorFlow/PyTorch'],
+          'Cybersecurity': ['Encryption techniques', 'Network security', 'Vulnerability assessment'],
+          'Mobile Development': ['Native app development', 'Cross-platform frameworks', 'Mobile UI design'],
+          'Database': ['SQL query optimization', 'Database design', 'NoSQL technologies']
+        };
+        
+        // Add skill-specific reason
+        if (course.subject && subjectToSkills[course.subject]) {
+          const skills = subjectToSkills[course.subject];
+          reasons.push(`Master ${skills[0]} and ${skills[1]} for professional ${course.subject} applications`);
+        } else {
+          reasons.push(`Develop technical expertise in ${course.subject || 'key technology'} fundamentals`);
+        }
+        
+        // Add project-based reason
+        const projectIdeas: Record<string, string> = {
+          'Computer Science': 'algorithm visualization tools',
+          'Programming': 'scalable software applications',
+          'Web Development': 'dynamic web applications with APIs',
+          'Data Science': 'predictive analytics dashboards',
+          'Artificial Intelligence': 'machine learning models for real-world problems',
+          'Cybersecurity': 'secure systems and penetration testing tools',
+          'Mobile Development': 'feature-rich mobile applications',
+          'Database': 'optimized database systems'
+        };
+        
+        if (course.subject && projectIdeas[course.subject]) {
+          reasons.push(`Build portfolio-quality ${projectIdeas[course.subject]} using industry standards`);
+        } else {
+          reasons.push(`Apply concepts through hands-on projects relevant to ${student.career_goal_id}`);
+        }
+        
+        // Add career-focused reason
+        if (course.career_paths && course.career_paths.includes(student.career_goal_id)) {
+          reasons.push(`Gain essential skills required for ${student.career_goal_id} positions in top companies`);
+        } else {
+          reasons.push(`Develop versatile technical abilities valued across multiple tech industries`);
+        }
+        
+        return {
+          course_id: course.id,
+          title: course.title,
+          subject: course.subject || 'General',
+          credits: course.credits,
+          match_score: 0.7,
+          difficulty_level: course.difficulty_level || 'Intermediate',
+          time_slot: typeof course.time_slots === 'object' ? 
+            JSON.stringify(course.time_slots) : course.time_slots,
+          reasons,
+          prerequisites: course.prerequisites || []
+        };
+      });
   }
 }
 
+// Main Dashboard Component
 export default function Dashboard() {
   const { user } = useAuth();
   const [student, setStudent] = useState<Student | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [recommendations, setRecommendations] = useState<CourseRecommendation[]>([]);
+  const { recommendations, setRecommendations, updateRecommendations, applyUpdateRecommendations, recommendationsLoaded } = useRecommendations();
   const [loading, setLoading] = useState(true);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
-  const handleRecommendationsGenerated = useCallback((newRecommendations: CourseRecommendation[]) => {
+  // Generate course recommendations
+  const generateRecommendations = useCallback(async (studentData: Student, coursesData: Course[]) => {
+    setLoadingRecommendations(true);
+    
+    try {
+      const newRecommendations = await getRecommendationsFromLLM(studentData, coursesData);
+      
+      if (newRecommendations.length > 0) {
+        // Verify no time conflicts
+        const hasConflicts = newRecommendations.some((course1, i) => 
+          newRecommendations.some((course2, j) => 
+            i !== j && hasTimeConflict(course1.time_slot, course2.time_slot)
+          )
+        );
+        
+        if (hasConflicts) {
+          console.warn('Time conflicts detected in recommendations');
+        }
+        
+        console.log('Generated new recommendations via LLM');
     setRecommendations(newRecommendations);
-  }, []);
+        const now = new Date();
+        setLastUpdated(now);
+        console.log('Last updated timestamp set to:', now.toLocaleString());
+      }
+    } catch (error) {
+      console.error('Error generating recommendations:', error);
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  }, [setRecommendations]);
 
+  // Load student and course data
   useEffect(() => {
     async function fetchData() {
       if (!user) return;
 
       try {
+        // Get student data
         const { data: studentData, error: studentError } = await supabase
           .from('students')
           .select('*')
@@ -618,20 +432,26 @@ export default function Dashboard() {
           return;
         }
 
+        // Get courses data
         const { data: coursesData, error: coursesError } = await supabase
           .from('courses')
           .select('*');
 
         if (coursesError) throw coursesError;
 
-        // Ensure time_slots is always a string
-        const transformedCourses = coursesData.map(course => ({
+        // Normalize course data
+        const normalizedCourses = coursesData.map(course => ({
           ...course,
           time_slots: typeof course.time_slots === 'object' ? JSON.stringify(course.time_slots) : course.time_slots
         }));
 
+        console.log('Loaded courses:', normalizedCourses.length);
+
         setStudent(studentData);
-        setCourses(transformedCourses);
+        setCourses(normalizedCourses);
+        
+        // Mark initial load as complete
+        setInitialLoadComplete(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -642,6 +462,52 @@ export default function Dashboard() {
     fetchData();
   }, [user]);
 
+  // Handle recommendations after initial data load
+  useEffect(() => {
+    // Only run this effect after initial data load and recommendations have been loaded from storage
+    if (!initialLoadComplete || !recommendationsLoaded || !student || courses.length === 0) {
+      return;
+    }
+
+    console.log('Checking if recommendations needed, current count:', recommendations.length);
+    
+    // Generate recommendations only if we don't have any stored ones
+    if (recommendations.length === 0) {
+      console.log('No existing recommendations found, generating new ones...');
+      generateRecommendations(student, courses);
+    } else {
+      console.log('Using existing recommendations from context');
+      // Update the last updated timestamp if we have existing recommendations
+      setLastUpdated(new Date());
+    }
+  }, [initialLoadComplete, recommendationsLoaded, recommendations.length, student, courses, generateRecommendations]);
+
+  // Handle refresh recommendations
+  const handleRefreshRecommendations = useCallback(() => {
+    if (student && courses.length > 0) {
+      // Clear any existing error
+      setError(null);
+      
+      // Inform user that we're generating new recommendations
+      console.log('Manually refreshing recommendations...');
+      
+      // Generate new recommendations
+      generateRecommendations(student, courses);
+    }
+  }, [student, courses, generateRecommendations]);
+
+  // Handle apply new recommendations from chat
+  const handleApplyRecommendations = useCallback(() => {
+    if (updateRecommendations.length > 0) {
+      console.log('Applying updates to recommendations from chat');
+      applyUpdateRecommendations();
+      const now = new Date();
+      setLastUpdated(now);
+      console.log('Last updated timestamp set to:', now.toLocaleString());
+    }
+  }, [updateRecommendations, applyUpdateRecommendations]);
+
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -650,6 +516,7 @@ export default function Dashboard() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen p-8">
@@ -660,11 +527,12 @@ export default function Dashboard() {
     );
   }
 
+  // No student data
   if (!student) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white p-8">
-      {/* Welcome Section */}
+      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Welcome back, {student.full_name}!
@@ -674,47 +542,52 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center">
-            <AcademicCapIcon className="h-8 w-8 text-blue-500" />
-            <div className="ml-4">
-              <p className="text-sm text-gray-500">Credits Completed</p>
-              <p className="text-2xl font-semibold">{student.credits_completed}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center">
-            <BookOpenIcon className="h-8 w-8 text-green-500" />
-            <div className="ml-4">
-              <p className="text-sm text-gray-500">Current Courses</p>
-              <p className="text-2xl font-semibold">{student.current_courses_taken.length}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center">
-            <ClockIcon className="h-8 w-8 text-purple-500" />
-            <div className="ml-4">
-              <p className="text-sm text-gray-500">Preferred Time</p>
-              <p className="text-2xl font-semibold">{student.course_slot_preference}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Course Recommendations */}
+      {/* Recommendations */}
       <div className="mb-12">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
           <h2 className="text-2xl font-semibold text-gray-900">
             Recommended Courses
           </h2>
+            {lastUpdated && (
+              <p className="text-sm text-gray-500 mt-1">
+                Last refreshed: {lastUpdated.toLocaleString()}
+              </p>
+            )}
+          </div>
+          <div className="flex space-x-4">
+            <button
+              onClick={handleRefreshRecommendations}
+              disabled={loadingRecommendations}
+              className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              {loadingRecommendations ? 'Generating...' : 'Get New Recommendations'}
+            </button>
+          </div>
         </div>
+        
         <div className="space-y-4">
-          {recommendations.map((course) => (
-          console.log(course),
+          {loadingRecommendations ? (
+            <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Generating recommendations...
+              </h3>
+              <div className="flex flex-col items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+                <p className="text-sm text-gray-600 max-w-md mx-auto">
+                  Our AI is analyzing your profile and available courses to find the best matches with no time conflicts.
+                </p>
+              </div>
+            </div>
+          ) : recommendations.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No recommendations yet</h3>
+              <p className="text-gray-600 mb-4">
+                We couldn't find any suitable courses for you at the moment. Try refreshing or adjusting your preferences.
+              </p>
+            </div>
+          ) : (
+            recommendations.map((course) => (
             <div 
               key={course.course_id}
               className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-all duration-300"
@@ -739,7 +612,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center">
                       <ChartBarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>{course.difficulty_level || 'Not specified'}</span>
+                        <span>{course.difficulty_level || 'Intermediate'}</span>
                     </div>
                     <div className="flex items-center">
                       <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
@@ -751,9 +624,9 @@ export default function Dashboard() {
                 <div className="md:w-1/3">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Why this course?</h4>
                   <ul className="space-y-1">
-                    {course.reasons.slice(0, 2).map((reason, index) => (
+                      {course.reasons.map((reason, index) => (
                       <li key={index} className="text-sm text-gray-600 flex items-start">
-                        <svg className="h-4 w-4 mr-2 mt-0.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className="h-4 w-4 mr-2 mt-0.5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <span className="line-clamp-2">{reason}</span>
@@ -776,41 +649,10 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
-
-      {/* Quick Actions */}
-      {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Link 
-          href="/profile"
-          className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow flex items-center"
-        >
-          <UserIcon className="h-8 w-8 text-gray-400" />
-          <div className="ml-4">
-            <h3 className="text-lg font-semibold text-gray-900">Update Profile</h3>
-            <p className="text-gray-600">Modify your preferences and goals</p>
-          </div>
-        </Link>
-        <Link 
-          href="/courses"
-          className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow flex items-center"
-        >
-          <BookOpenIcon className="h-8 w-8 text-gray-400" />
-          <div className="ml-4">
-            <h3 className="text-lg font-semibold text-gray-900">Browse Courses</h3>
-            <p className="text-gray-600">Explore all available courses</p>
-          </div>
-        </Link> */}
-      {/* </div> */}
-
-      {student && courses.length > 0 && (
-        <MLRecommender
-          student={student}
-          courses={courses}
-          onRecommendationsGenerated={handleRecommendationsGenerated}
-        />
-      )}
     </div>
   );
 } 

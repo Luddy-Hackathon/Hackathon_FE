@@ -43,7 +43,7 @@ export default function Sidebar() {
       <div className="p-6 border-b border-zinc-200">
         <Link href="/" className="no-underline hover:no-underline">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold bg-gradient-to-r from-black to-zinc-600 bg-clip-text text-transparent">🎓 Smart Selector</span>
+            <span className="text-xl font-bold bg-gradient-to-r from-black to-zinc-600 bg-clip-text text-transparent">🎓 EduMuse</span>
           </div>
         </Link>
       </div>
@@ -79,7 +79,7 @@ export default function Sidebar() {
           <span className="font-medium">Log Out</span>
         </button>
         <div className="text-xs text-zinc-500 mt-4 text-center">
-          © 2025 Smart Course Selector
+          © 2025 EduMuse
         </div>
       </div>
     </div>

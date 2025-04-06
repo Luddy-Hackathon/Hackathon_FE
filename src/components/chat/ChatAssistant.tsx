@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { getCourseAvailabilityData } from "@/lib/courseAvailability";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { BookOpenIcon, AcademicCapIcon, ChartBarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 
 // API configuration
 const API_CONFIG = {
@@ -310,7 +311,6 @@ const CourseRecommendationUI = ({
 
   return (
     <div className="mt-4 space-y-3">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recommended Courses</h3>
       <div className="space-y-4">
         {courses.map((course, index) => (
           <div 
@@ -319,11 +319,19 @@ const CourseRecommendationUI = ({
           >
             <div className="flex justify-between items-center">
               <div>
-                <h4 className="text-sm font-medium text-gray-900 dark:text-white">{course.title}</h4>
+                <TextGenerateEffect 
+                  words={course.title}
+                  className="text-sm font-medium text-gray-900 dark:text-white"
+                  duration={1}
+                  filter={false}
+                />
                 <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                  <span>{course.subject || 'General'}</span>
-                  <span>•</span>
-                  <span>{course.difficulty_level || 'Intermediate'}</span>
+                  <TextGenerateEffect 
+                    words={`${course.subject || 'General'} • ${course.difficulty_level || 'Intermediate'}`}
+                    className="text-[10px] text-gray-500 dark:text-gray-400"
+                    duration={1}
+                    filter={false}
+                  />
                 </div>
               </div>
               <Button 
@@ -1602,79 +1610,98 @@ The user is making casual conversation. When responding:
                 className={cn(
                   "max-w-[92%] rounded-lg p-4",
                   message.role === 'user'
-                    ? 'bg-black text-white rounded-br-none'
+                    ? ' text-white bg-black rounded-br-none'
                     : 'bg-white dark:bg-gray-800 text-black dark:text-white rounded-bl-none shadow-sm'
                 )}
               >
-                <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{cleanedContent}</p>
-                
-                {message.role === 'assistant' && message.metadata?.recommendedCourses && 
-                 Array.isArray(message.metadata.recommendedCourses) && 
-                 message.metadata.recommendedCourses.length > 0 && 
-                 message.metadata.isRecommending && (
-                  <CourseRecommendationUI
-                    courses={message.metadata.recommendedCourses.map((id, idx) => {
-                      const course = courses.find(c => c.id === id);
-                      if (!course) {
-                        console.warn(`Course with ID ${id} not found in courses array`);
-                        return null;
-                      }
-                      
-                      // Get availability data
-                      const getCourseAvailability = async () => {
-                        try {
-                          const availData = await getCourseAvailabilityData([id]);
-                          return availData[id] || 0.7;
-                        } catch (error) {
-                          console.error('Error fetching availability data:', error);
-                          return 0.7;
-                        }
-                      };
-                      
-                      // Determine difficulty level based on hours_required if available
-                      let difficultyLevel = course.difficulty_level || 'Intermediate';
-                      if ('hours_required' in course && typeof course.hours_required === 'number') {
-                        if (course.hours_required < 4) {
-                          difficultyLevel = 'Beginner';
-                        } else if (course.hours_required >= 4 && course.hours_required < 8) {
-                          difficultyLevel = 'Intermediate';
-                        } else if (course.hours_required >= 8 && course.hours_required < 12) {
-                          difficultyLevel = 'Advanced';
-                        } else {
-                          difficultyLevel = 'Expert';
-                        }
-                      }
-                      
-                      // Generate detailed course-specific reasons if none provided
-                      let reasons = ['Recommended by AI Assistant'];
-                      if (course.subject) {
-                        reasons.push(`Covers key ${course.subject} concepts and skills`);
-                      }
-                      if (course.career_paths && Array.isArray(course.career_paths) && course.career_paths.length > 0) {
-                        reasons.push(`Relevant for ${course.career_paths[0]} career path`);
-                      }
-                      if ('hours_required' in course && typeof course.hours_required === 'number') {
-                        reasons.push(`Requires approximately ${course.hours_required} hours of work per week`);
-                      }
-                      
-                      return {
-                        course_id: id,
-                        title: course.title,
-                        subject: course.subject || 'General',
-                        credits: course.credits,
-                        match_score: 0.85,
-                        difficulty_level: difficultyLevel,
-                        time_slot: course.time_slots || 'Flexible',
-                        reasons: reasons,
-                        prerequisites: course.prerequisites || [],
-                        hours_required: ('hours_required' in course) ? course.hours_required : undefined,
-                        availability_score: 0.7 // Use a fixed default value instead of state
-                      };
-                    }).filter(Boolean) as CourseRecommendation[]}
-                    onAddToDashboard={handleAddToDashboard}
-                  />
+                {message.role === 'assistant' ? (
+                  <div>
+                    <TextGenerateEffect 
+                      words={cleanedContent} 
+                      className="text-[13px] leading-[1.5] whitespace-pre-wrap text-gray-800 dark:text-gray-200"
+                      duration={1}
+                      filter={false}
+                    />
+                    {message.metadata?.recommendedCourses && 
+                     Array.isArray(message.metadata.recommendedCourses) && 
+                     message.metadata.recommendedCourses.length > 0 && 
+                     message.metadata.isRecommending && (
+                      <div className="mt-4">
+                        <TextGenerateEffect 
+                          words="Recommended Courses:"
+                          className="text-[13px] font-medium text-gray-800 dark:text-gray-200 mb-2"
+                          duration={1}
+                          filter={false}
+                        />
+                        <CourseRecommendationUI
+                          courses={message.metadata.recommendedCourses.map((id, idx) => {
+                            const course = courses.find(c => c.id === id);
+                            if (!course) {
+                              console.warn(`Course with ID ${id} not found in courses array`);
+                              return null;
+                            }
+                            
+                            // Get availability data
+                            const getCourseAvailability = async () => {
+                              try {
+                                const availData = await getCourseAvailabilityData([id]);
+                                return availData[id] || 0.7;
+                              } catch (error) {
+                                console.error('Error fetching availability data:', error);
+                                return 0.7;
+                              }
+                            };
+                            
+                            // Determine difficulty level based on hours_required if available
+                            let difficultyLevel = course.difficulty_level || 'Intermediate';
+                            if ('hours_required' in course && typeof course.hours_required === 'number') {
+                              if (course.hours_required < 4) {
+                                difficultyLevel = 'Beginner';
+                              } else if (course.hours_required >= 4 && course.hours_required < 8) {
+                                difficultyLevel = 'Intermediate';
+                              } else if (course.hours_required >= 8 && course.hours_required < 12) {
+                                difficultyLevel = 'Advanced';
+                              } else {
+                                difficultyLevel = 'Expert';
+                              }
+                            }
+                            
+                            // Generate detailed course-specific reasons if none provided
+                            let reasons = ['Recommended by AI Assistant'];
+                            if (course.subject) {
+                              reasons.push(`Covers key ${course.subject} concepts and skills`);
+                            }
+                            if (course.career_paths && Array.isArray(course.career_paths) && course.career_paths.length > 0) {
+                              reasons.push(`Relevant for ${course.career_paths[0]} career path`);
+                            }
+                            if ('hours_required' in course && typeof course.hours_required === 'number') {
+                              reasons.push(`Requires approximately ${course.hours_required} hours of work per week`);
+                            }
+                            
+                            const recommendation: CourseRecommendation = {
+                              course_id: id,
+                              title: course.title,
+                              subject: course.subject || 'General',
+                              credits: course.credits,
+                              match_score: 0.85,
+                              difficulty_level: difficultyLevel,
+                              time_slot: course.time_slots || 'Flexible',
+                              reasons: reasons,
+                              prerequisites: course.prerequisites || [],
+                              hours_required: ('hours_required' in course) ? course.hours_required : undefined,
+                              availability_score: 0.7
+                            };
+                            return recommendation;
+                          }).filter((course): course is CourseRecommendation => course !== null)}
+                          onAddToDashboard={handleAddToDashboard}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[13px] leading-[1.5] whitespace-pre-wrap text-white">{cleanedContent}</p>
                 )}
-
+                
                 <span className="text-xs opacity-70 mt-2 block">
                   {message.timestamp.toLocaleTimeString()}
                 </span>
@@ -1694,7 +1721,7 @@ The user is making casual conversation. When responding:
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Ask me anything..."
-            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-gray-900 text-black dark:text-white"
+            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-gray-900 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           />
           <button
             onClick={handleSend}

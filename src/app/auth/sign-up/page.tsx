@@ -7,11 +7,11 @@ import { motion } from "framer-motion";
 import { GraduationCap } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Sign In | EduMuse",
-  description: "Sign in to your EduMuse account",
+  title: "Sign Up | EduMuse",
+  description: "Create your EduMuse account",
 };
 
-export default function SignInPage() {
+export default function SignUpPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-zinc-50 to-white px-4">
       <div className="max-w-md w-full space-y-8">
@@ -30,9 +30,9 @@ export default function SignInPage() {
               <p className="text-sm text-zinc-600 mt-1">Your AI-powered learning companion</p>
             </div>
           </div>
-          <h2 className="text-2xl font-semibold text-center">Welcome back</h2>
+          <h2 className="text-2xl font-semibold text-center">Create your account</h2>
           <p className="text-zinc-600 text-center mt-2">
-            Sign in to continue your learning journey
+            Start your personalized learning journey
           </p>
         </motion.div>
 
@@ -43,13 +43,25 @@ export default function SignInPage() {
         >
           <Card className="shadow-lg border-zinc-200">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Sign In</CardTitle>
+              <CardTitle className="text-2xl">Sign Up</CardTitle>
               <CardDescription>
-                Enter your credentials to access your account
+                Create your account to get started
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="name">
+                    Full Name
+                  </label>
+                  <Input
+                    id="name"
+                    placeholder="John Doe"
+                    type="text"
+                    autoComplete="name"
+                    className="h-10"
+                  />
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium" htmlFor="email">
                     Email
@@ -63,38 +75,42 @@ export default function SignInPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium" htmlFor="password">
-                      Password
-                    </label>
-                    <Link
-                      href="/auth/forgot-password"
-                      className="text-sm text-primary hover:text-primary/80 transition-colors"
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
+                  <label className="text-sm font-medium" htmlFor="password">
+                    Password
+                  </label>
                   <Input
                     id="password"
                     placeholder="••••••••"
                     type="password"
-                    autoComplete="current-password"
+                    autoComplete="new-password"
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium" htmlFor="confirm-password">
+                    Confirm Password
+                  </label>
+                  <Input
+                    id="confirm-password"
+                    placeholder="••••••••"
+                    type="password"
+                    autoComplete="new-password"
                     className="h-10"
                   />
                 </div>
                 <Button className="w-full h-10" asChild>
-                  <Link href="/">Sign In</Link>
+                  <Link href="/">Create Account</Link>
                 </Button>
               </form>
             </CardContent>
             <CardFooter className="flex justify-center">
               <div className="text-sm text-zinc-500">
-                Don't have an account?{" "}
+                Already have an account?{" "}
                 <Link
-                  href="/auth/sign-up"
+                  href="/auth/sign-in"
                   className="text-primary font-medium hover:text-primary/80 transition-colors"
                 >
-                  Sign up
+                  Sign in
                 </Link>
               </div>
             </CardFooter>
@@ -103,4 +119,4 @@ export default function SignInPage() {
       </div>
     </div>
   );
-}
+} 

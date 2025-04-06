@@ -5,6 +5,7 @@ import CareerFlow from "@/components/CareerFlow";
 import { supabase } from "@/lib/supabase";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { MessageLoading } from "./ui/message-loading";
 
 interface RoadmapProps {
   careerGoal: string;
@@ -122,7 +123,132 @@ Do not include any text before or after the JSON array.`;
     loadRoadmap();
   }, [user]);
 
-  if (loading) return <p className="text-center mt-10">Loading roadmap...</p>;
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-8 w-64 bg-gray-200 rounded animate-pulse"></div>
+          <div className="flex items-center space-x-2">
+            <MessageLoading />
+            <span className="text-sm text-gray-500">Generating your roadmap...</span>
+          </div>
+        </div>
+        <div className="relative w-full h-[800px] bg-gradient-to-br from-gray-50 to-white rounded-xl border shadow-sm overflow-hidden">
+          {/* Loading overlay */}
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="text-center">
+              <MessageLoading className="h-12 w-12" />
+            </div>
+          </div>
+          
+          {/* Background grid */}
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAwIDEwIEwgNDAgMTAgTSAxMCAwIEwgMTAgNDAgTSAwIDIwIEwgNDAgMjAgTSAyMCAwIEwgMjAgNDAgTSAwIDMwIEwgNDAgMzAgTSAzMCAwIEwgMzAgNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2U1ZTVlNSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]"></div>
+          
+          {/* Skeleton nodes with connecting edges */}
+          <div className="relative w-full h-full">
+            {/* Start Node */}
+            <div className="absolute top-1/4 left-1/4">
+              <div className="w-[250px] bg-white p-4 rounded-lg shadow-lg border-2 border-green-500">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2"></div>
+                <div className="h-3 w-32 bg-gray-200 rounded animate-pulse"></div>
+                <div className="mt-2 flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                  <div className="h-3 w-20 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="h-2 w-full bg-gray-200 rounded animate-pulse"></div>
+                  <div className="h-2 w-3/4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Middle Node */}
+            <div className="absolute top-1/2 left-1/2">
+              <div className="w-[250px] bg-white p-4 rounded-lg shadow-lg border-2 border-blue-500">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2"></div>
+                <div className="h-3 w-32 bg-gray-200 rounded animate-pulse"></div>
+                <div className="mt-2 flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                  <div className="h-3 w-20 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="h-2 w-full bg-gray-200 rounded animate-pulse"></div>
+                  <div className="h-2 w-3/4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* End Node */}
+            <div className="absolute bottom-1/4 right-1/4">
+              <div className="w-[250px] bg-white p-4 rounded-lg shadow-lg border-2 border-purple-500">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2"></div>
+                <div className="h-3 w-32 bg-gray-200 rounded animate-pulse"></div>
+                <div className="mt-2 flex items-center">
+                  <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
+                  <div className="h-3 w-20 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="h-2 w-full bg-gray-200 rounded animate-pulse"></div>
+                  <div className="h-2 w-3/4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Connecting Edges */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {/* First Edge */}
+              <path
+                d="M 25% 25% Q 50% 25%, 50% 50%"
+                stroke="#94a3b8"
+                strokeWidth="2"
+                fill="none"
+                strokeDasharray="5,5"
+                className="animate-[dash_1s_linear_infinite]"
+              />
+              <path
+                d="M 25% 25% Q 50% 25%, 50% 50%"
+                stroke="#3b82f6"
+                strokeWidth="2"
+                fill="none"
+                className="animate-[dash_1s_linear_infinite]"
+                style={{ strokeDasharray: '5,5', strokeDashoffset: '5' }}
+              />
+              
+              {/* Second Edge */}
+              <path
+                d="M 50% 50% Q 75% 50%, 75% 75%"
+                stroke="#94a3b8"
+                strokeWidth="2"
+                fill="none"
+                strokeDasharray="5,5"
+                className="animate-[dash_1s_linear_infinite]"
+              />
+              <path
+                d="M 50% 50% Q 75% 50%, 75% 75%"
+                stroke="#3b82f6"
+                strokeWidth="2"
+                fill="none"
+                className="animate-[dash_1s_linear_infinite]"
+                style={{ strokeDasharray: '5,5', strokeDashoffset: '5' }}
+              />
+            </svg>
+          </div>
+          
+          {/* Skeleton controls */}
+          <div className="absolute top-4 right-4 flex space-x-2">
+            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+          </div>
+          
+          {/* Skeleton minimap */}
+          <div className="absolute bottom-4 right-4 w-32 h-32 bg-gray-200 rounded-lg animate-pulse">
+            <div className="absolute inset-2 bg-white/50 rounded animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">

@@ -47,8 +47,29 @@ export default function RoadmapPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <div className="h-8 w-64 bg-gray-200 rounded mx-auto animate-pulse"></div>
+            <div className="h-4 w-96 bg-gray-200 rounded mx-auto mt-4 animate-pulse"></div>
+          </div>
+          <div className="space-y-8">
+            {/* Semester blocks skeleton */}
+            {[1, 2, 3, 4].map((semester) => (
+              <div key={semester} className="bg-white rounded-lg shadow p-6">
+                <div className="h-6 w-32 bg-gray-200 rounded animate-pulse mb-4"></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((course) => (
+                    <div key={course} className="bg-gray-50 p-4 rounded-lg">
+                      <div className="h-4 w-3/4 bg-gray-200 rounded animate-pulse mb-2"></div>
+                      <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

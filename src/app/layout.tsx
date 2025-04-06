@@ -9,13 +9,16 @@ import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: "Smart Course Selector",
-  description: "AI-powered course recommendation platform",
+  title: "EduMuse",
+  description: "Your AI-powered learning companion for personalized education",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
@@ -24,15 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={cn("antialiased", inter.variable)}>
+    <html lang="en" className="scroll-smooth">
+      <body className={cn("antialiased min-h-screen bg-background", inter.variable)}>
         <AuthProvider>
-        
           <RecommendationsProvider>
-          <AuthenticatedLayout>{children}</AuthenticatedLayout>
+            <AuthenticatedLayout>{children}</AuthenticatedLayout>
             <Toaster />
           </RecommendationsProvider>
-
         </AuthProvider>
       </body>
     </html>

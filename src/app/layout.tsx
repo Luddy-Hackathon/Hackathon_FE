@@ -29,9 +29,8 @@ export default function RootLayout({
         <AuthProvider>
           <RecommendationsProvider>
             <AuthenticatedLayout>{children}</AuthenticatedLayout>
+            <Toaster />
           </RecommendationsProvider>
-          <AuthenticatedLayout>{children}</AuthenticatedLayout>
-          <Toaster />
         </AuthProvider>
       </body>
     </html>

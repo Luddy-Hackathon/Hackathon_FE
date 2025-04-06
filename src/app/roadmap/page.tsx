@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Roadmap from "@/components/Roadmap";
+import { RecommendationsProvider } from "@/context/RecommendationsContext";
 
 interface StudentData {
   career_goal_id: string;
@@ -76,11 +77,13 @@ export default function RoadmapPage() {
             A personalized course plan to help you achieve your career goals
           </p>
         </div>
-        <Roadmap
-          careerGoal={studentData.career_goal_id}
-          currentCourses={studentData.current_courses_taken}
-          creditsCompleted={studentData.credits_completed}
-        />
+        <RecommendationsProvider>
+          <Roadmap
+            careerGoal={studentData.career_goal_id}
+            currentCourses={studentData.current_courses_taken}
+            creditsCompleted={studentData.credits_completed}
+          />
+        </RecommendationsProvider>
       </div>
     </div>
   );

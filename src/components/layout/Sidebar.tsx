@@ -1,5 +1,4 @@
 "use client";
-import { BookOpen, GraduationCap, MessageSquare, User, Settings, LogOut } from "lucide-react";
 import { BookOpen, GraduationCap, MessageSquare, User, Settings, LogOut, Map } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";

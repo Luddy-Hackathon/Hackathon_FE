@@ -79,17 +79,3 @@ export async function getAdvisorRecommendation(
     throw error;
   }
 }
-
-// Usage example:
-// import { getAdvisorRecommendation } from './standalone-advisor';
-//
-// async function example() {
-//   try {
-//     const recommendation = await getAdvisorRecommendation('user-123');
-//     console.log('Recommendation:', recommendation);
-//   } catch (error) {
-//     console.error('Error:', error);
-//   }
-// }
-//
-// example();

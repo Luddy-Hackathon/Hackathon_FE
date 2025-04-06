@@ -67,7 +67,7 @@ export default function SignUpPage() {
           <Button className="w-full">Sign Up</Button>
           <div className="text-center text-sm">
             Already have an account?{" "}
-            <Link href="/signin" className="text-primary hover:underline">
+            <Link href="/signin" className="text-primary hover:text-primary/80 transition-colors">
               Sign in
             </Link>
           </div>

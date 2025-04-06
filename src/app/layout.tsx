@@ -27,11 +27,13 @@ export default function RootLayout({
     <html lang="en">
       <body className={cn("antialiased", inter.variable)}>
         <AuthProvider>
+        
           <RecommendationsProvider>
-            <AuthenticatedLayout>{children}</AuthenticatedLayout>
-          </RecommendationsProvider>
           <AuthenticatedLayout>{children}</AuthenticatedLayout>
-          <Toaster />
+            <Toaster />
+          </RecommendationsProvider>
+          
+          
         </AuthProvider>
       </body>
     </html>

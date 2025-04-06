@@ -14,6 +14,8 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  devIndicators: false,
+  reactStrictMode: false,
 };
 
 module.exports = nextConfig;

@@ -196,7 +196,7 @@ export default function ProfileSetup() {
 
       // Add a small delay before redirecting
       setTimeout(() => {
-        router.push("/dashboard");
+        router.push("/");
       }, 1000);
 
     } catch (error) {
@@ -428,7 +428,7 @@ export default function ProfileSetup() {
                     </Select>
                   </div>
 
-                  {selectedCareer && (
+                  {/* {selectedCareer && (
                     <Card className="bg-muted">
                       <CardHeader>
                         <CardTitle className="text-lg">Career Details</CardTitle>
@@ -453,7 +453,7 @@ export default function ProfileSetup() {
                         )}
                       </CardContent>
                     </Card>
-                  )}
+                  )} */}
 
                   <div className="space-y-2">
                     <Label htmlFor="target_graduation_term">Target Graduation Term</Label>

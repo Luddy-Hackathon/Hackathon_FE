@@ -91,11 +91,13 @@ export default function AuthenticatedLayout({
       <Sidebar />
       <div className="flex flex-1 ml-64">
         <main className="flex-1 overflow-y-auto pr-4">{children}</main>
-        <div className="w-[420px] hidden md:block border-l border-gray-200">
-          {student && courses.length > 0 && (
-            <ClientChatAssistant student={student} courses={courses} />
-          )}
-        </div>
+        {pathname === '/' && (
+          <div className="w-[420px] hidden md:block border-l border-gray-200">
+            {student && courses.length > 0 && (
+              <ClientChatAssistant student={student} courses={courses} />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

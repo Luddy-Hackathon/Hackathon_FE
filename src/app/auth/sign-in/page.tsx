@@ -50,7 +50,7 @@ export default function SignInPage() {
                   </label>
                   <Link
                     href="/auth/forgot-password"
-                    className="text-sm text-primary hover:underline"
+                    className="text-sm text-primary hover:text-primary/80 transition-colors"
                   >
                     Forgot password?
                   </Link>
@@ -72,7 +72,7 @@ export default function SignInPage() {
               Don't have an account?{" "}
               <Link
                 href="/auth/sign-up"
-                className="text-primary font-medium hover:underline"
+                className="text-primary font-medium hover:text-primary/80 transition-colors"
               >
                 Sign up
               </Link>
